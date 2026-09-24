@@ -1,6 +1,6 @@
 {
-  "image_name": "dummy",
-  "cloud_run_job": "dummy-job",
+  "image_name": "railway-ingest-dummy",
+  "cloud_run_job": "railway-ingest-dummy-job",
   "region": "europe-west1",
   "depends_on": []
 }
