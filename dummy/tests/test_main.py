@@ -6,4 +6,4 @@ def test_main_prints_message(capsys) -> None:
 
     captured = capsys.readouterr()
 
-    assert captured.out == "Hello from railway-ingestion\n"
+    assert captured.out == "Hello from railway-ingestion, brought to you by continuous deployment\n"
