@@ -1,0 +1,261 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: railway-analytics-508615
+  REGISTRY: europe-west1-docker.pkg.dev
+  REPOSITORY: railway-containers
+  WIF_PROVIDER: projects/955463760385/locations/global/workloadIdentityPools/github-actions/providers/github-actions
+  DEPLOY_SERVICE_ACCOUNT: railway-ingestion-ci@railway-analytics-508615.iam.gserviceaccount.com
+
+jobs:
+  detect:
+    name: Detect changed roots
+    runs-on: ubuntu-latest
+
+    outputs:
+      matrix: ${{ steps.detect.outputs.matrix }}
+      has_changes: ${{ steps.detect.outputs.has_changes }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed deployables
+        id: detect
+        env:
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t changed_files < <(
+            git diff --name-only "$BASE_SHA" "$HEAD_SHA"
+          )
+
+          mapfile -t manifests < <(
+            find . \
+              -mindepth 2 \
+              -maxdepth 2 \
+              -name deploy.json \
+              -print \
+              | sort
+          )
+
+          matrix='[]'
+          all_roots=false
+
+          # Changes to deployment workflow semantics should redeploy all roots.
+          for file in "${changed_files[@]}"; do
+            if [[ "$file" == .github/workflows/* ]]; then
+              all_roots=true
+              break
+            fi
+          done
+
+          for manifest in "${manifests[@]}"; do
+            root="${manifest#./}"
+            root="${root%/deploy.json}"
+
+            jq -e '
+              (.image_name | type == "string" and length > 0) and
+              (.cloud_run_job | type == "string" and length > 0) and
+              (.region | type == "string" and length > 0) and
+              (
+                .depends_on
+                | type == "array"
+                and all(.[]; type == "string" and length > 0)
+              )
+            ' "$manifest" > /dev/null
+
+            image_name="$(jq -r '.image_name' "$manifest")"
+            cloud_run_job="$(jq -r '.cloud_run_job' "$manifest")"
+            region="$(jq -r '.region' "$manifest")"
+
+            affected="$all_roots"
+
+            if [[ "$affected" != true ]]; then
+              for file in "${changed_files[@]}"; do
+                if [[ "$file" == "$root/"* ]]; then
+                  affected=true
+                  break
+                fi
+              done
+            fi
+
+            if [[ "$affected" != true ]]; then
+              mapfile -t dependencies < <(
+                jq -r '.depends_on[]' "$manifest"
+              )
+
+              for dependency in "${dependencies[@]}"; do
+                dependency="${dependency#./}"
+                dependency="${dependency%/}"
+
+                for file in "${changed_files[@]}"; do
+                  if [[ "$file" == "$dependency" ||
+                        "$file" == "$dependency/"* ]]; then
+                    affected=true
+                    break 2
+                  fi
+                done
+              done
+            fi
+
+            if [[ "$affected" == true ]]; then
+              matrix="$(
+                jq -c \
+                  --arg root "$root" \
+                  --arg image_name "$image_name" \
+                  --arg cloud_run_job "$cloud_run_job" \
+                  --arg region "$region" \
+                  '. + [{
+                    root: $root,
+                    image_name: $image_name,
+                    cloud_run_job: $cloud_run_job,
+                    region: $region
+                  }]' \
+                  <<< "$matrix"
+              )"
+            fi
+          done
+
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+          if [[ "$(jq 'length' <<< "$matrix")" -gt 0 ]]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "Deploying roots:"
+          jq . <<< "$matrix"
+
+  deploy:
+    name: Deploy (${{ matrix.root }})
+    needs: detect
+    if: needs.detect.outputs.has_changes == 'true'
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.detect.outputs.matrix) }}
+
+    defaults:
+      run:
+        working-directory: ${{ matrix.root }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Docker authentication
+        run: |
+          gcloud auth configure-docker "$REGISTRY" --quiet
+
+      - name: Build image
+        env:
+          IMAGE_URI: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ matrix.image_name }}
+        run: |
+          docker build \
+            -t "${IMAGE_URI}:${GITHUB_SHA}" \
+            .
+
+      - name: Push image
+        env:
+          IMAGE_URI: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ matrix.image_name }}
+        run: |
+          docker push "${IMAGE_URI}:${GITHUB_SHA}"
+
+      - name: Resolve image digest
+        id: image
+        env:
+          IMAGE_URI: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ matrix.image_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          digest="$(
+            gcloud artifacts docker images describe \
+              "${IMAGE_URI}:${GITHUB_SHA}" \
+              --format='value(image_summary.digest)'
+          )"
+
+          test -n "$digest"
+
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "Resolved image: ${IMAGE_URI}@${digest}"
+
+      - name: Deploy image to Cloud Run Job
+        env:
+          IMAGE_URI: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ matrix.image_name }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+          CLOUD_RUN_JOB: ${{ matrix.cloud_run_job }}
+          REGION: ${{ matrix.region }}
+        run: |
+          gcloud run jobs update "$CLOUD_RUN_JOB" \
+            --project="$PROJECT_ID" \
+            --region="$REGION" \
+            --image="${IMAGE_URI}@${DIGEST}" \
+            --quiet
+
+  cd:
+    name: CD
+    needs:
+      - detect
+      - deploy
+
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check results
+        env:
+          DETECT_RESULT: ${{ needs.detect.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$DETECT_RESULT" != "success" ]]; then
+            echo "Root detection failed."
+            exit 1
+          fi
+
+          case "$DEPLOY_RESULT" in
+            success)
+              echo "All affected deployables deployed successfully."
+              ;;
+            skipped)
+              echo "No deployable roots were affected."
+              ;;
+            *)
+              echo "One or more deployments failed: $DEPLOY_RESULT"
+              exit 1
+              ;;
+          esac
