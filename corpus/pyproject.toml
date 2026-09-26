@@ -1,0 +1,13 @@
+[project]
+name = "railway-ingestion-corpus"
+version = "0.1.0"
+requires-python = ">=3.14"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0"
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
