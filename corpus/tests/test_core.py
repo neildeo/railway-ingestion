@@ -4,7 +4,7 @@ from unittest.mock import Mock
 from corpus.core import ObjectState, object_name, sync_corpus
 
 
-def test_object_name_uses_acquired_date() -> None:
+def test_object_name_uses_acquisition_date() -> None:
     assert (
         object_name(date(2026, 9, 25))
         == "corpus/acquired_date=2026-09-25/corpus.json"
