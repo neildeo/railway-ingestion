@@ -1,5 +1,5 @@
 import json
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 import requests
@@ -65,9 +65,18 @@ def test_successful_fetch_returns_exact_response_bytes() -> None:
         password="test-password",
     )
 
-    result = fetch_latest_corpus_file(credentials)
+    response = Mock()
+    response.content = b'{"TIPLOCDATA":[]}'
+    response.raise_for_status.return_value = None
+
+    with patch(
+        "corpus.data_fetch.requests.get",
+        return_value=response,
+    ):
+        result = fetch_latest_corpus_file(credentials)
 
     assert result == b'{"TIPLOCDATA":[]}'
+    response.raise_for_status.assert_called_once_with()
 
 
 def test_authentication_failure_is_not_retried() -> None:
@@ -76,8 +85,22 @@ def test_authentication_failure_is_not_retried() -> None:
         password="bad-password",
     )
 
-    with pytest.raises(requests.HTTPError):
-        fetch_latest_corpus_file(credentials)
+    response = Mock()
+    response.status_code = 401
+
+    http_error = requests.HTTPError(response=response)
+    response.raise_for_status.side_effect = http_error
+
+    with patch(
+        "corpus.data_fetch.requests.get",
+        return_value=response,
+    ) as mock_get:
+        with pytest.raises(requests.HTTPError) as exc_info:
+            fetch_latest_corpus_file(credentials)
+
+    assert exc_info.value.response is not None
+    assert exc_info.value.response.status_code == 401
+    mock_get.assert_called_once()
 
 
 def test_not_found_is_not_retried() -> None:
@@ -86,8 +109,22 @@ def test_not_found_is_not_retried() -> None:
         password="test-password",
     )
 
-    with pytest.raises(requests.HTTPError):
-        fetch_latest_corpus_file(credentials)
+    response = Mock()
+    response.status_code = 404
+
+    http_error = requests.HTTPError(response=response)
+    response.raise_for_status.side_effect = http_error
+
+    with patch(
+        "corpus.data_fetch.requests.get",
+        return_value=response,
+    ) as mock_get:
+        with pytest.raises(requests.HTTPError) as exc_info:
+            fetch_latest_corpus_file(credentials)
+
+    assert exc_info.value.response is not None
+    assert exc_info.value.response.status_code == 404
+    mock_get.assert_called_once()
 
 
 def test_server_error_is_retried_then_succeeds() -> None:
@@ -96,9 +133,25 @@ def test_server_error_is_retried_then_succeeds() -> None:
         password="test-password",
     )
 
-    result = fetch_latest_corpus_file(credentials)
+    failed_response = Mock()
+    failed_response.status_code = 503
+    failed_response.raise_for_status.side_effect = requests.HTTPError(
+        response=failed_response
+    )
+
+    success_response = Mock()
+    success_response.status_code = 200
+    success_response.raise_for_status.return_value = None
+    success_response.content = b'{"TIPLOCDATA":[]}'
+
+    with patch(
+        "corpus.data_fetch.requests.get",
+        side_effect=[failed_response, success_response],
+    ) as mock_get:
+        result = fetch_latest_corpus_file(credentials)
 
     assert result == b'{"TIPLOCDATA":[]}'
+    assert mock_get.call_count == 2
 
 
 def test_timeout_is_retried_then_succeeds() -> None:
@@ -107,9 +160,22 @@ def test_timeout_is_retried_then_succeeds() -> None:
         password="test-password",
     )
 
-    result = fetch_latest_corpus_file(credentials)
+    success_response = Mock()
+    success_response.status_code = 200
+    success_response.raise_for_status.return_value = None
+    success_response.content = b'{"TIPLOCDATA":[]}'
+
+    with patch(
+        "corpus.data_fetch.requests.get",
+        side_effect=[
+            requests.Timeout(),
+            success_response,
+        ],
+    ) as mock_get:
+        result = fetch_latest_corpus_file(credentials)
 
     assert result == b'{"TIPLOCDATA":[]}'
+    assert mock_get.call_count == 2
 
 
 def test_transient_failure_exhausting_retries_fails() -> None:
@@ -118,5 +184,19 @@ def test_transient_failure_exhausting_retries_fails() -> None:
         password="test-password",
     )
 
-    with pytest.raises(requests.RequestException):
-        fetch_latest_corpus_file(credentials)
+    response = Mock()
+    response.status_code = 503
+
+    http_error = requests.HTTPError(response=response)
+    response.raise_for_status.side_effect = http_error
+
+    with patch(
+        "corpus.data_fetch.requests.get",
+        return_value=response,
+    ) as mock_get:
+        with pytest.raises(requests.HTTPError) as exc_info:
+            fetch_latest_corpus_file(credentials)
+
+    assert exc_info.value.response is not None
+    assert exc_info.value.response.status_code == 503
+    assert mock_get.call_count == 6
