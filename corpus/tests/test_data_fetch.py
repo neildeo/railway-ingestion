@@ -1,5 +1,5 @@
 import json
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, ANY
 
 import pytest
 import requests
@@ -157,7 +157,8 @@ def test_secret_manager_credentials_are_parsed() -> None:
             "projects/test-project/"
             "secrets/network-rail-credentials/"
             "versions/latest"
-        )
+        ),
+        retry=ANY,
     )
 
 

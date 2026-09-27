@@ -52,7 +52,12 @@ def get_network_rail_credentials_from_secret_manager(
     # Add retry policy later
     secret = client.access_secret_version(
         name=secret_name,
-        # retry=GoogleRetry()
+        retry=GoogleRetry(
+            initial=1.0,
+            maximum=8.0,
+            multiplier=2.0,
+            timeout=30.0,
+        )
     )
 
     payload_dict: dict[str, str] = JSONDecoder().decode(
