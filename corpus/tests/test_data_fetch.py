@@ -153,13 +153,11 @@ def test_secret_manager_credentials_are_parsed() -> None:
     )
 
     client.access_secret_version.assert_called_once_with(
-        request={
-            "name": (
-                "projects/test-project/"
-                "secrets/network-rail-credentials/"
-                "versions/latest"
-            )
-        }
+        name=(
+            "projects/test-project/"
+            "secrets/network-rail-credentials/"
+            "versions/latest"
+        )
     )
 
 
