@@ -64,15 +64,29 @@ def test_successful_fetch_returns_exact_response_bytes() -> None:
     session = Mock()
     session.get.return_value = response
 
-    with patch(
+    with (
+        patch(
+            "corpus.data_fetch.get_network_rail_credentials_from_secret_manager",
+            return_value=credentials,
+        ) as mock_get_credentials,
+        patch(
             "corpus.data_fetch.create_requests_session",
             return_value=session,
-    ) as mock_get_session:
-        result = fetch_latest_corpus_file(credentials)
+        ),
+    ):
+        result = fetch_latest_corpus_file(
+            project_id="test-project",
+            secret_id="network-rail-credentials",
+        )
 
     assert result == b'{"TIPLOCDATA":[]}'
     response.raise_for_status.assert_called_once_with()
     session.get.assert_called_once()
+
+    mock_get_credentials.assert_called_once_with(
+        "test-project",
+        "network-rail-credentials",
+    )
 
 
 def test_non_transient_http_errors_are_not_retried() -> None:
@@ -93,12 +107,21 @@ def test_non_transient_http_errors_are_not_retried() -> None:
         session = Mock()
         session.get.return_value = response
 
-        with patch(
-            "corpus.data_fetch.create_requests_session",
-            return_value=session,
+        with (
+            patch(
+                "corpus.data_fetch.get_network_rail_credentials_from_secret_manager",
+                return_value=credentials,
+            ),
+            patch(
+                "corpus.data_fetch.create_requests_session",
+                return_value=session,
+            ),
         ):
             with pytest.raises(requests.HTTPError) as exc_info:
-                fetch_latest_corpus_file(credentials)
+                fetch_latest_corpus_file(
+                    project_id="test-project",
+                    secret_id="network-rail-credentials",
+                )
 
         assert exc_info.value.response is not None
         assert exc_info.value.response.status_code == status_code
@@ -118,11 +141,20 @@ def test_fetch_uses_configured_requests_session() -> None:
     session = Mock()
     session.get.return_value = response
 
-    with patch(
-        "corpus.data_fetch.create_requests_session",
-        return_value=session,
-    ) as mock_get_session:
-        result = fetch_latest_corpus_file(credentials)
+    with (
+        patch(
+            "corpus.data_fetch.get_network_rail_credentials_from_secret_manager",
+            return_value=credentials,
+        ),
+        patch(
+            "corpus.data_fetch.create_requests_session",
+            return_value=session,
+        ) as mock_get_session,
+    ):
+        result = fetch_latest_corpus_file(
+            project_id="test-project",
+            secret_id="network-rail-credentials",
+        )
 
     mock_get_session.assert_called_once_with()
     session.get.assert_called_once()

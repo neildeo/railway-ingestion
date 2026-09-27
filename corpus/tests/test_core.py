@@ -26,6 +26,8 @@ def test_matching_object_is_not_uploaded() -> None:
 
     sync_corpus(
         acquisition_date=date(2026, 9, 25),
+        project_id="test-project",
+        secret_id="test-secret",
         fetch_latest_corpus_file=fetch_latest_corpus_file,
         crc32c_checksum=crc32c_checksum,
         get_object_state=get_object_state,
@@ -45,6 +47,8 @@ def test_missing_object_is_uploaded() -> None:
 
     sync_corpus(
         acquisition_date=date(2026, 9, 25),
+        project_id="test-project",
+        secret_id="test-secret",
         fetch_latest_corpus_file=fetch_latest_corpus_file,
         crc32c_checksum=crc32c_checksum,
         get_object_state=get_object_state,
@@ -73,6 +77,8 @@ def test_changed_object_is_uploaded_against_existing_generation() -> None:
 
     sync_corpus(
         acquisition_date=date(2026, 9, 25),
+        project_id="test-project",
+        secret_id="test-secret",
         fetch_latest_corpus_file=fetch_latest_corpus_file,
         crc32c_checksum=crc32c_checksum,
         get_object_state=get_object_state,

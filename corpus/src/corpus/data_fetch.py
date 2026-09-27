@@ -77,8 +77,14 @@ def get_network_rail_credentials_from_secret_manager(
 
 
 def fetch_latest_corpus_file(
-    credentials: NetworkRailCredentials,
+    project_id: str,
+    secret_id: str,
 ) -> bytes:
+    credentials = get_network_rail_credentials_from_secret_manager(
+        project_id,
+        secret_id,
+    )
+
     session = create_requests_session()
 
     response = session.get(

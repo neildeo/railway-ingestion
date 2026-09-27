@@ -16,14 +16,16 @@ def object_name(acquisition_date: date) -> str:
 def sync_corpus(
     *,
     acquisition_date: date,
-    fetch_latest_corpus_file: Callable[[], bytes],
+    project_id: str,
+    secret_id: str,
+    fetch_latest_corpus_file: Callable[[str, str], bytes],
     crc32c_checksum: Callable[[bytes], str],
     get_object_state: Callable[[str], ObjectState | None],
     upload_object: Callable[[str, bytes, int], None],
 ) -> None:
     name = object_name(acquisition_date)
 
-    content = fetch_latest_corpus_file()
+    content = fetch_latest_corpus_file(project_id, secret_id)
     local_crc32c = crc32c_checksum(content)
     existing = get_object_state(name)
 
