@@ -61,14 +61,18 @@ def test_successful_fetch_returns_exact_response_bytes() -> None:
     response.content = b'{"TIPLOCDATA":[]}'
     response.raise_for_status.return_value = None
 
+    session = Mock()
+    session.get.return_value = response
+
     with patch(
-        "corpus.data_fetch.requests.get",
-        return_value=response,
-    ):
+            "corpus.data_fetch.create_requests_session",
+            return_value=session,
+    ) as mock_get_session:
         result = fetch_latest_corpus_file(credentials)
 
     assert result == b'{"TIPLOCDATA":[]}'
     response.raise_for_status.assert_called_once_with()
+    session.get.assert_called_once()
 
 
 def test_non_transient_http_errors_are_not_retried() -> None:
@@ -86,16 +90,43 @@ def test_non_transient_http_errors_are_not_retried() -> None:
         http_error = requests.HTTPError(response=response)
         response.raise_for_status.side_effect = http_error
 
+        session = Mock()
+        session.get.return_value = response
+
         with patch(
-            "corpus.data_fetch.requests.get",
-            return_value=response,
-        ) as mock_get:
+            "corpus.data_fetch.create_requests_session",
+            return_value=session,
+        ):
             with pytest.raises(requests.HTTPError) as exc_info:
                 fetch_latest_corpus_file(credentials)
 
         assert exc_info.value.response is not None
         assert exc_info.value.response.status_code == status_code
-        mock_get.assert_called_once()
+        session.get.assert_called_once()
+
+
+def test_fetch_uses_configured_requests_session() -> None:
+    credentials = NetworkRailCredentials(
+        username="test-user",
+        password="test-password",
+    )
+
+    response = Mock()
+    response.content = b'{"TIPLOCDATA":[]}'
+    response.raise_for_status.return_value = None
+
+    session = Mock()
+    session.get.return_value = response
+
+    with patch(
+        "corpus.data_fetch.create_requests_session",
+        return_value=session,
+    ) as mock_get_session:
+        result = fetch_latest_corpus_file(credentials)
+
+    mock_get_session.assert_called_once_with()
+    session.get.assert_called_once()
+    assert result == b'{"TIPLOCDATA":[]}'
 
 
 def test_secret_manager_credentials_are_parsed() -> None:

@@ -1,5 +1,17 @@
 from dataclasses import dataclass
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+MAX_RETRIES = 5
+
+RETRYABLE_STATUS_CODES = {
+    429,
+    500,
+    502,
+    503,
+    504,
+}
 
 
 @dataclass(frozen=True)
@@ -13,7 +25,18 @@ def get_corpus_url() -> str:
 
 
 def create_requests_session() -> requests.Session:
-    raise NotImplementedError
+    retry_policy = Retry(
+        total=MAX_RETRIES,
+        allowed_methods=frozenset({"GET"}),
+        status_forcelist=RETRYABLE_STATUS_CODES,
+    )
+    s = requests.Session()
+    s.mount(
+        prefix="https://",
+        adapter=HTTPAdapter(max_retries=retry_policy),
+    )
+
+    return s
 
 
 def get_network_rail_credentials_from_secret_manager(
@@ -26,7 +49,9 @@ def get_network_rail_credentials_from_secret_manager(
 def fetch_latest_corpus_file(
     credentials: NetworkRailCredentials,
 ) -> bytes:
-    response = requests.get(
+    session = create_requests_session()
+
+    response = session.get(
         url=get_corpus_url(),
         auth=(credentials.username, credentials.password)
     )
