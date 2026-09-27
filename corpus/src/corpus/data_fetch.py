@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from google.cloud import secretmanager
 
 MAX_RETRIES = 5
 

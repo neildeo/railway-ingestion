@@ -130,36 +130,104 @@ def test_fetch_uses_configured_requests_session() -> None:
 
 
 def test_secret_manager_credentials_are_parsed() -> None:
-    credentials = get_network_rail_credentials_from_secret_manager(
-        project_id="test-project",
-        secret_id="network-rail-credentials",
+    response = Mock()
+    response.payload.data = (
+        b'{"username": "test-user", "password": "test-password"}'
     )
+
+    client = Mock()
+    client.access_secret_version.return_value = response
+
+    with patch(
+        "corpus.data_fetch.secretmanager.SecretManagerServiceClient",
+        return_value=client,
+    ):
+        credentials = get_network_rail_credentials_from_secret_manager(
+            project_id="test-project",
+            secret_id="network-rail-credentials",
+        )
 
     assert credentials == NetworkRailCredentials(
         username="test-user",
         password="test-password",
     )
 
+    client.access_secret_version.assert_called_once_with(
+        request={
+            "name": (
+                "projects/test-project/"
+                "secrets/network-rail-credentials/"
+                "versions/latest"
+            )
+        }
+    )
+
 
 def test_secret_manager_missing_secret_fails() -> None:
-    with pytest.raises(google_exceptions.NotFound):
-        get_network_rail_credentials_from_secret_manager(
-            project_id="test-project",
-            secret_id="missing-secret",
-        )
+    client = Mock()
+    client.access_secret_version.side_effect = google_exceptions.NotFound(
+        "secret not found"
+    )
+
+    with patch(
+        "corpus.data_fetch.secretmanager.SecretManagerServiceClient",
+        return_value=client,
+    ):
+        with pytest.raises(google_exceptions.NotFound):
+            get_network_rail_credentials_from_secret_manager(
+                project_id="test-project",
+                secret_id="missing-secret",
+            )
 
 
 def test_secret_manager_permission_denied_fails() -> None:
-    with pytest.raises(google_exceptions.PermissionDenied):
-        get_network_rail_credentials_from_secret_manager(
-            project_id="test-project",
-            secret_id="network-rail-credentials",
-        )
+    client = Mock()
+    client.access_secret_version.side_effect = (
+        google_exceptions.PermissionDenied("permission denied")
+    )
+
+    with patch(
+        "corpus.data_fetch.secretmanager.SecretManagerServiceClient",
+        return_value=client,
+    ):
+        with pytest.raises(google_exceptions.PermissionDenied):
+            get_network_rail_credentials_from_secret_manager(
+                project_id="test-project",
+                secret_id="network-rail-credentials",
+            )
 
 
 def test_secret_manager_malformed_secret_fails() -> None:
-    with pytest.raises(ValueError):
-        get_network_rail_credentials_from_secret_manager(
-            project_id="test-project",
-            secret_id="malformed-secret",
-        )
+    response = Mock()
+    response.payload.data = b'{"username": "test-user"'
+
+    client = Mock()
+    client.access_secret_version.return_value = response
+
+    with patch(
+        "corpus.data_fetch.secretmanager.SecretManagerServiceClient",
+        return_value=client,
+    ):
+        with pytest.raises(ValueError):
+            get_network_rail_credentials_from_secret_manager(
+                project_id="test-project",
+                secret_id="malformed-secret",
+            )
+
+
+def test_secret_manager_incomplete_credentials_fail() -> None:
+    response = Mock()
+    response.payload.data = b'{"username": "test-user"}'
+
+    client = Mock()
+    client.access_secret_version.return_value = response
+
+    with patch(
+        "corpus.data_fetch.secretmanager.SecretManagerServiceClient",
+        return_value=client,
+    ):
+        with pytest.raises(ValueError):
+            get_network_rail_credentials_from_secret_manager(
+                project_id="test-project",
+                secret_id="network-rail-credentials",
+            )
