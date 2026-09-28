@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 from datetime import date
 from typing import Callable
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -30,6 +33,9 @@ def sync_corpus(
     existing = get_object_state(name)
 
     if existing is not None and existing.crc32c == local_crc32c:
+        logger.info(
+            "CORPUS object already matches current source; no upload required"
+        )
         return
 
     expected_generation = (
@@ -38,4 +44,12 @@ def sync_corpus(
         else 0
     )
 
+    logger.info(
+        "Uploading CORPUS object %s with generation precondition %s",
+        name,
+        expected_generation,
+    )
+
     upload_object(name, content, expected_generation)
+
+    logger.info("Successfully uploaded CORPUS object %s", name)
