@@ -1,5 +1,5 @@
 def main() -> None:
-    print("Hello from railway-ingestion, brought to you by continuous deployment")
+    raise RuntimeError("Intentional failure for alerting test")
 
 
 if __name__ == "__main__":
