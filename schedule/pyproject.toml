@@ -2,7 +2,10 @@
 name = "railway-ingestion-schedule"
 version = "0.1.0"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+  "requests>=2.32",
+  "google-cloud-storage>=3.0",
+]
 
 [dependency-groups]
 dev = [

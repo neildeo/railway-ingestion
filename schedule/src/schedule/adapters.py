@@ -7,6 +7,13 @@ from schedule.core import (
     SourceMetadata,
 )
 
+from requests import Session
+from google.cloud import storage
+
+
+def create_requests_session() -> Session:
+    raise NotImplementedError
+
 
 def fetch_header_row(
     schedule_request: ScheduleRequest,
@@ -45,8 +52,8 @@ def upload_schedule(
     Perform a fresh full source request and stream the exact compressed bytes
     into the normal GCS object.
 
-    Before transferring the body, verify the new S3 response metadata still
-    matches `expected_source_metadata`.
+    Before transferring the body, verify the new publication info and S3
+    response metadata still match `expected_metadata`.
 
     The final GCS write should be create-only (`if_generation_match=0`).
     """
