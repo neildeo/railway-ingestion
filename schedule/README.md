@@ -209,21 +209,25 @@ The exact gzip object remains the authoritative raw evidence. GCS metadata is co
 
 The full snapshot is roughly 130 MiB compressed and more than 3 GiB decompressed, so the ingest must not materialise the whole artefact in memory.
 
-The HTTP request is opened with streaming enabled.
+The initial probe request is opened with streaming enabled.
 
-The job first reads only enough compressed bytes to decompress the first NDJSON line. Those original compressed bytes are retained in a small buffer while the header is parsed.
+The probe reads only enough compressed bytes to decompress the first NDJSON line. Compressed chunks are fed incrementally into a stateful gzip decompressor, while the resulting decompressed bytes are buffered only until the first newline is found. A defensive upper bound is applied to this decompressed header buffer so a malformed source cannot cause unbounded probing.
 
-Once the header is known:
+Once the first NDJSON record has been parsed:
 
-1. validate the header;
-2. derive `(type, sequence)`;
-3. derive the final GCS object path;
-4. check GCS for an object at that path;
-5. either no-op, quarantine, or stream the object to GCS.
+1. capture the source HTTP metadata;
+2. validate the timetable header;
+3. derive `(type, sequence)`;
+4. derive the final GCS object path;
+5. check GCS for an object at that path;
+6. close the probe response;
+7. either no-op, quarantine, or begin a fresh transfer request.
 
-When uploading a new object, the compressed bytes already consumed during header inspection are written first, then the remainder of the HTTP response is copied chunk-by-chunk directly into GCS.
+Uploads and quarantines therefore use a second HTTP request rather than continuing the probe response.
 
-After the first NDJSON line has been parsed there is no further need to decompress the payload.
+Before any transfer begins, the fresh response's source metadata is compared with the metadata observed during the probe. If it differs, the operation fails because the core decision was made against a different source artefact.
+
+If the metadata still matches, the compressed response body is copied chunk-by-chunk directly from the HTTP stream into the GCS writer. The transfer path does not decompress the timetable data.
 
 The ingest therefore preserves the exact upstream gzip bytes while keeping memory use bounded.
 
@@ -234,22 +238,27 @@ Every invocation follows the same GCS-side decision logic regardless of whether 
 Conceptually:
 
 ```text
-request source artefact
-  -> obtain S3 response metadata
+probe source artefact
+  -> obtain source metadata
   -> partially decompress first NDJSON record
+  -> close probe response
   -> validate header
   -> extract source type, sequence, timestamp
   -> derive GCS object path
   -> inspect GCS
 
 GCS object absent
-  -> upload create-only
+  -> make fresh source request
+  -> verify source metadata still matches probe
+  -> stream exact compressed bytes to create-only GCS object
 
 GCS object present and provenance matches
   -> healthy no-op
 
 GCS object present and provenance differs
-  -> quarantine incoming artefact
+  -> make fresh source request
+  -> verify source metadata still matches probe
+  -> stream exact compressed bytes to quarantine
   -> fail loudly
 ```
 
@@ -406,6 +415,21 @@ do not land into normal raw namespace
 emit ERROR
 exit non-zero
 ```
+
+### Source changes between probe and transfer
+
+Uploads and quarantines make a fresh source request after the initial probe.
+
+Before streaming begins, the fresh response metadata must match the metadata observed during the probe. If it differs, the decision made from the probe is stale and the transfer must not proceed.
+
+```text
+fresh source metadata differs from probe
+  -> do not land or quarantine the new response
+  -> fail loudly
+  -> later invocation starts again from a fresh probe
+```
+
+This condition is distinct from a provenance conflict with an already-landed canonical object. Quarantine is used for the latter, not for a source artefact which changes during a single invocation.
 
 ### Streaming or GCS upload failure
 

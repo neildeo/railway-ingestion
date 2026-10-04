@@ -54,9 +54,9 @@ class ScheduleHeader:
 class SourceMetadata:
     """Metadata describing the upstream S3 object."""
 
-    etag: str | None
-    last_modified: str | None
-    content_length: int | None
+    etag: str
+    last_modified: str
+    content_length: int
 
 
 @dataclass(frozen=True)
