@@ -209,7 +209,7 @@ The exact gzip object remains the authoritative raw evidence. GCS metadata is co
 
 The full snapshot is roughly 130 MiB compressed and more than 3 GiB decompressed, so the ingest must not materialise the whole artefact in memory.
 
-The initial probe request is opened with streaming enabled.
+The initial probe request is opened with streaming enabled. The probe follows the same restart-from-scratch principle for transient failures. If the short source stream fails before the first NDJSON record has been obtained, the failed response is discarded and a fresh probe request begins from byte zero. Non-transient failures are not retried.
 
 The probe reads only enough compressed bytes to decompress the first NDJSON line. Compressed chunks are fed incrementally into a stateful gzip decompressor, while the resulting decompressed bytes are buffered only until the first newline is found. A defensive upper bound is applied to this decompressed header buffer so a malformed source cannot cause unbounded probing.
 
@@ -433,16 +433,37 @@ This condition is distinct from a provenance conflict with an already-landed can
 
 ### Streaming or GCS upload failure
 
-The final path is written create-only. A failed upload must not leave an artefact which is treated as successfully landed.
+Uploads and quarantines allow up to three complete transfer attempts for transient source-network or GCS failures.
 
-Response:
+Each transfer attempt starts from scratch:
+
+```text
+open fresh source request
+  -> verify source metadata still matches the probe
+  -> open fresh create-only GCS upload
+  -> stream compressed bytes from byte zero
+```
+
+If a transient failure occurs while reading the source stream or writing to GCS, the current transfer attempt is abandoned. A retry opens both a new source response and a new GCS upload session and begins again from byte zero.
+
+The ingest does not attempt application-level byte-range resume or splice a restarted source response into a partially completed GCS upload.
+
+Only transient failures are retried. Errors which invalidate the assumptions of the operation fail immediately, including:
+
+- authentication or permission failures;
+- malformed source responses;
+- missing required source metadata;
+- probe-to-transfer source metadata mismatch;
+- conflicting provenance after losing a concurrent create race.
+
+If all three transfer attempts fail transiently:
 
 ```text
 emit ERROR
 exit non-zero
 ```
 
-A later scheduled or manual run can retry safely.
+The Cloud Run Job itself is not relied upon for routine transient retries. A later scheduled or manual invocation remains safe because normal writes are create-only and the ingest is idempotent.
 
 ### Concurrent duplicate writers
 

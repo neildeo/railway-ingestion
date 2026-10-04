@@ -120,7 +120,7 @@ def test_new_publication_is_uploaded() -> None:
     deps["upload_schedule"].assert_called_once_with(
         schedule_request,
         "schedules/update/sequence=5246/schedules.json.gz",
-        SOURCE_METADATA,
+        fetched,
     )
     deps["quarantine_schedule"].assert_not_called()
 
@@ -175,7 +175,7 @@ def test_existing_publication_with_different_metadata_is_quarantined_and_fails()
             "schedules/quarantine/update/sequence=5246/"
             "2026-10-03T10-03-42.381927Z.json.gz"
         ),
-        SOURCE_METADATA,
+        fetched,
     )
 
 

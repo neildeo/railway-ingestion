@@ -97,12 +97,12 @@ type FetchHeaderRow = Callable[
 type GetObjectState = Callable[[str], StoredObjectState | None]
 
 type UploadSchedule = Callable[
-    [ScheduleRequest, str, SourceMetadata],
+    [ScheduleRequest, str, SchedulePublicationInfo],
     None,
 ]
 
 type QuarantineSchedule = Callable[
-    [ScheduleRequest, str, SourceMetadata],
+    [ScheduleRequest, str, SchedulePublicationInfo],
     None,
 ]
 
@@ -219,7 +219,7 @@ def fetch_and_upload_schedule(
 
     if object_state is None:
         # No existing file - upload published file
-        upload_schedule(schedule_request, name, pub_info.source_metadata)
+        upload_schedule(schedule_request, name, pub_info)
         return
 
     # If metadata matches, we no-op
@@ -236,6 +236,6 @@ def fetch_and_upload_schedule(
             pub_info.header.sequence,
             utc_now(),
         ),
-        pub_info.source_metadata,
+        pub_info,
     )
     raise SourceMutationError
