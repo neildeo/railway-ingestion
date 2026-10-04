@@ -195,14 +195,6 @@ source_last_modified
 source_content_length
 ```
 
-Quarantine objects should additionally retain:
-
-```text
-observed_at
-conflict_with_object
-conflict_reason
-```
-
 The exact gzip object remains the authoritative raw evidence. GCS metadata is convenience and provenance information.
 
 ## Streaming model

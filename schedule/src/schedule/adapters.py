@@ -39,7 +39,7 @@ def get_object_state(object_name: str) -> StoredObjectState | None:
 def upload_schedule(
     schedule_request: ScheduleRequest,
     object_name: str,
-    expected_source_metadata: SourceMetadata,
+    expected_metadata: SchedulePublicationInfo,
 ) -> None:
     """
     Perform a fresh full source request and stream the exact compressed bytes
@@ -56,7 +56,7 @@ def upload_schedule(
 def quarantine_schedule(
     schedule_request: ScheduleRequest,
     object_name: str,
-    expected_source_metadata: SourceMetadata,
+    expected_metadata: SchedulePublicationInfo,
 ) -> None:
     """
     Perform a fresh full source request and preserve the conflicting artefact
