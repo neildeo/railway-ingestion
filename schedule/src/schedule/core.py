@@ -189,8 +189,22 @@ def fetch_and_upload_schedule(
         if require_publication:
             raise PublicationNotAvailableError
 
-        logger.info(
-            f"SCHEDULE {schedule_request} not published yet. Exiting..."
+        extra = {
+            "event": "schedule_publication_not_available",
+            "extract_type": extract_type_for_schedule_request(
+                schedule_request
+            ).value,
+        }
+
+        match schedule_request:
+            case UpdateRequest(day=day):
+                extra["update_day"] = day.value
+            case FullSnapshotRequest():
+                pass
+
+        logger.warning(
+            "Expected SCHEDULE publication not available",
+            extra=extra,
         )
         return
 
