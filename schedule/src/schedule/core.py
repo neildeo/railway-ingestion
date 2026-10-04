@@ -183,4 +183,45 @@ def fetch_and_upload_schedule(
     This is deliberately orchestration only. HTTP probing, partial gzip
     decompression, full HTTP streaming, and GCS streaming belong in adapters.
     """
-    raise NotImplementedError
+    pub_info = fetch_header_row(schedule_request)
+
+    if pub_info is None:
+        if require_publication:
+            raise PublicationNotAvailableError
+
+        logger.info(
+            f"SCHEDULE {schedule_request} not published yet. Exiting..."
+        )
+        return
+
+    validate_header_matches_schedule_request(
+        schedule_request=schedule_request,
+        header=pub_info.header
+    )
+
+    name = object_name(schedule_request=schedule_request,
+                       sequence=pub_info.header.sequence)
+    object_state = get_object_state(name)
+
+    if object_state is None:
+        # No existing file - upload published file
+        upload_schedule(schedule_request, name, pub_info.source_metadata)
+        return
+
+    # If metadata matches, we no-op
+    if object_state.source_metadata == pub_info.source_metadata:
+        logger.info(
+            "Published SCHEDULE metadata matches existing object. Exiting...")
+        return
+
+    # Otherwise we have a content mismatch - quarantine the file for later inspection
+    quarantine_schedule(
+        schedule_request,
+        quarantine_object_name(
+            schedule_request,
+            pub_info.header.sequence,
+            utc_now(),
+        ),
+        pub_info.source_metadata,
+    )
+    raise SourceMutationError
