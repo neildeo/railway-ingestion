@@ -17,6 +17,7 @@ import json
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 from google.cloud import storage
+from google.api_core import exceptions as google_exceptions
 
 
 MAX_RETRIES = 5
@@ -239,12 +240,60 @@ def _parse_schedule_header(
     )
 
 
-def get_object_state(object_name: str) -> StoredObjectState | None:
+def get_object_state(
+    object_name: str,
+) -> StoredObjectState | None:
     """
     Return the existing GCS object's stored source provenance and generation,
     or None when the object does not exist.
     """
-    raise NotImplementedError
+    client = storage.Client()
+    bucket = client.bucket(_get_raw_bucket_name())
+    blob = bucket.blob(object_name)
+
+    try:
+        blob.reload()
+    except google_exceptions.NotFound:
+        return None
+
+    blob_metadata = blob.metadata
+    if blob_metadata is None:
+        raise ValueError("GCS object has no metadata")
+
+    try:
+        source_etag = blob_metadata["source_etag"]
+        source_last_modified = blob_metadata[
+            "source_last_modified"
+        ]
+        source_content_length = int(
+            blob_metadata["source_content_length"]
+        )
+    except KeyError as exc:
+        raise ValueError(
+            f"GCS object has no metadata field: {exc.args[0]}"
+        ) from exc
+    except ValueError as exc:
+        raise ValueError(
+            "GCS object source_content_length is not an integer"
+        ) from exc
+
+    if blob.generation is None:
+        raise ValueError(
+            "GCS object has no generation metadata"
+        )
+
+    return StoredObjectState(
+        source_metadata=SourceMetadata(
+            etag=source_etag,
+            last_modified=source_last_modified,
+            content_length=source_content_length,
+        ),
+        generation=blob.generation,
+    )
+
+
+def _get_raw_bucket_name() -> str:
+    return "railway-analytics-508615-network-rail-open-data-raw"
 
 
 def upload_schedule(
