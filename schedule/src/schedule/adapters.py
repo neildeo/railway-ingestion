@@ -9,6 +9,7 @@ from schedule.core import (
     ScheduleHeader,
     SourceMetadata,
     ExtractType,
+    SourceMutationError,
 )
 
 import requests
@@ -17,7 +18,7 @@ import json
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 from google.cloud import storage
-from google.api_core import exceptions as google_exceptions
+from google.api_core import exceptions as google_exceptions, retry as google_retry
 
 
 MAX_RETRIES = 5
@@ -42,6 +43,10 @@ _TRANSIENT_REQUEST_ERRORS = (
     requests.exceptions.ChunkedEncodingError,
 )
 
+_MAX_TRANSFER_ATTEMPTS = 3
+
+_TRANSFER_CHUNK_SIZE = 1024 * 1024  # 1 MiB
+
 
 def create_requests_session() -> requests.Session:
     retry_policy = Retry(
@@ -61,9 +66,16 @@ def create_requests_session() -> requests.Session:
 def get_endpoint_url(schedule_request: ScheduleRequest) -> str:
     match schedule_request:
         case FullSnapshotRequest():
-            return "https://publicdatafeeds.networkrail.co.uk/ntrod/CifFileAuthenticate?type=CIF_ALL_FULL_DAILY&day=toc-full"
+            return (
+                "https://publicdatafeeds.networkrail.co.uk/ntrod/"
+                "CifFileAuthenticate?type=CIF_ALL_FULL_DAILY&day=toc-full"
+            )
         case UpdateRequest(day):
-            return f"https://publicdatafeeds.networkrail.co.uk/ntrod/CifFileAuthenticate?type=CIF_ALL_FULL_DAILY&day={day.value}"
+            return (
+                "https://publicdatafeeds.networkrail.co.uk/ntrod/"
+                "CifFileAuthenticate?"
+                f"type=CIF_ALL_UPDATE_DAILY&day=toc-update-{day.value}"
+            )
 
 
 def fetch_header_row(
@@ -310,7 +322,12 @@ def upload_schedule(
 
     The final GCS write should be create-only (`if_generation_match=0`).
     """
-    raise NotImplementedError
+    _stream_schedule_to_gcs(
+        schedule_request=schedule_request,
+        object_name=object_name,
+        expected_metadata=expected_metadata,
+        resolve_concurrent_create=True,
+    )
 
 
 def quarantine_schedule(
@@ -325,4 +342,109 @@ def quarantine_schedule(
     The new source response metadata should still be checked against the probe
     metadata before the transfer begins.
     """
-    raise NotImplementedError
+    _stream_schedule_to_gcs(
+        schedule_request=schedule_request,
+        object_name=object_name,
+        expected_metadata=expected_metadata,
+        resolve_concurrent_create=False,
+    )
+
+
+def _gcs_metadata(
+    publication_info: SchedulePublicationInfo,
+) -> dict[str, str]:
+    header = publication_info.header
+    source = publication_info.source_metadata
+
+    return {
+        "source_type": header.extract_type.value,
+        "source_sequence": str(header.sequence),
+        "source_timestamp": str(header.timestamp),
+        "source_etag": source.etag,
+        "source_last_modified": source.last_modified,
+        "source_content_length": str(source.content_length),
+    }
+
+
+def _is_transient_transfer_error(exc: Exception) -> bool:
+    return (
+        isinstance(exc, _TRANSIENT_REQUEST_ERRORS)
+        or google_retry.if_transient_error(exc)
+    )
+
+
+def _stream_schedule_to_gcs(
+    *,
+    schedule_request: ScheduleRequest,
+    object_name: str,
+    expected_metadata: SchedulePublicationInfo,
+    resolve_concurrent_create: bool,
+) -> None:
+    url = get_endpoint_url(schedule_request)
+    session = create_requests_session()
+
+    client = storage.Client()
+    bucket = client.bucket(_get_raw_bucket_name())
+    blob = bucket.blob(object_name)
+
+    blob.metadata = _gcs_metadata(expected_metadata)
+
+    for attempt in range(_MAX_TRANSFER_ATTEMPTS):
+        try:
+            with session.get(
+                url,
+                stream=True,
+            ) as response:
+                response.raise_for_status()
+
+                actual_source_metadata = (
+                    _extract_source_metadata(response)
+                )
+
+                if (
+                    actual_source_metadata
+                    != expected_metadata.source_metadata
+                ):
+                    raise SourceMutationError(
+                        "SCHEDULE source changed between probe "
+                        "and transfer"
+                    )
+
+                with blob.open(
+                    "wb",
+                    if_generation_match=0,
+                ) as writer:
+                    for chunk in response.iter_content(
+                        chunk_size=_TRANSFER_CHUNK_SIZE
+                    ):
+                        if chunk:
+                            writer.write(chunk)
+
+            return
+
+        except google_exceptions.PreconditionFailed:
+            if not resolve_concurrent_create:
+                raise
+
+            winning_state = get_object_state(object_name)
+
+            if (
+                winning_state is not None
+                and winning_state.source_metadata
+                == expected_metadata.source_metadata
+            ):
+                return
+
+            raise SourceMutationError(
+                "Concurrent writer created a SCHEDULE object "
+                "with conflicting provenance"
+            )
+
+        except Exception as exc:
+            if (
+                not _is_transient_transfer_error(exc)
+                or attempt == _MAX_TRANSFER_ATTEMPTS - 1
+            ):
+                raise
+
+    raise AssertionError("unreachable")
