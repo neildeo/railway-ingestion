@@ -6,7 +6,9 @@ from schedule.core import (
     FullSnapshotRequest,
     UpdateRequest,
     StoredObjectState,
+    ScheduleHeader,
     SourceMetadata,
+    ExtractType,
 )
 
 import requests
@@ -27,7 +29,17 @@ RETRYABLE_STATUS_CODES = {
     504,
 }
 
-MAX_HEADER_BYTES = 1_024 * 1_024  # 1 MiB
+_MAX_HEADER_BYTES = 1_024 * 1_024  # 1 MiB
+
+_MAX_PROBE_ATTEMPTS = 3
+
+_PROBE_CHUNK_SIZE = 1024
+
+_TRANSIENT_REQUEST_ERRORS = (
+    requests.ConnectionError,
+    requests.Timeout,
+    requests.exceptions.ChunkedEncodingError,
+)
 
 
 def create_requests_session() -> requests.Session:
@@ -55,50 +67,176 @@ def get_endpoint_url(schedule_request: ScheduleRequest) -> str:
 
 def fetch_header_row(
     schedule_request: ScheduleRequest,
-) -> SchedulePublicationInfo | None:
-    """
-    Make the short probe request.
-
-    Intended responsibilities:
-    - build the Network Rail URL for `schedule_request`
-    - authenticate and follow the redirect to S3
-    - capture S3 response metadata
-    - consume only enough compressed bytes to obtain the first NDJSON row
-    - partially decompress and parse JsonTimetableV1
-    - close the HTTP response before returning
-
-    Return None only for the normal "publication not available yet" outcome.
-    Transport/auth/parsing failures should raise.
-    """
+) -> SchedulePublicationInfo:
     url = get_endpoint_url(schedule_request)
     session = create_requests_session()
 
-    # Need to inject auth info here
+    for attempt in range(_MAX_PROBE_ATTEMPTS):
+        try:
+            with session.get(
+                url,
+                stream=True,
+            ) as response:
+                response.raise_for_status()
 
-    decompressor = zlib.decompressobj(16 + zlib.MAX_WBITS)
+                source_metadata = (
+                    _extract_source_metadata(
+                        response
+                    )
+                )
+
+                header_bytes = (
+                    _read_header_bytes(
+                        response
+                    )
+                )
+
+            return SchedulePublicationInfo(
+                header=_parse_schedule_header(
+                    header_bytes
+                ),
+                source_metadata=source_metadata,
+            )
+
+        except _TRANSIENT_REQUEST_ERRORS:
+            if attempt == _MAX_PROBE_ATTEMPTS - 1:
+                raise
+
+    raise AssertionError("unreachable")
+
+
+def _extract_source_metadata(
+    response: requests.Response,
+) -> SourceMetadata:
+    try:
+        etag = response.headers["ETag"]
+        last_modified = response.headers["Last-Modified"]
+        content_length_raw = response.headers[
+            "Content-Length"
+        ]
+    except KeyError as exc:
+        raise ValueError(
+            f"Required source header missing: {exc.args[0]}"
+        ) from exc
+
+    try:
+        content_length = int(content_length_raw)
+    except ValueError as exc:
+        raise ValueError(
+            "Source Content-Length is not an integer"
+        ) from exc
+
+    return SourceMetadata(
+        etag=etag,
+        last_modified=last_modified,
+        content_length=content_length,
+    )
+
+
+def _read_header_bytes(
+    response: requests.Response,
+) -> bytes:
+    decompressor = zlib.decompressobj(
+        16 + zlib.MAX_WBITS
+    )
     buffer = bytearray()
-    header_bytes = bytes()
 
-    with session.get(url, stream=True) as response:
-        # Grab header info - how?
-        for compressed_chunk in response.iter_content(chunk_size=1_024):
-            if not compressed_chunk:
-                continue
+    for compressed_chunk in response.iter_content(
+        chunk_size=_PROBE_CHUNK_SIZE
+    ):
+        if not compressed_chunk:
+            continue
 
-            buffer.extend(decompressor.decompress(compressed_chunk))
+        try:
+            buffer.extend(
+                decompressor.decompress(
+                    compressed_chunk
+                )
+            )
+        except zlib.error as exc:
+            raise ValueError(
+                "SCHEDULE response is not valid gzip"
+            ) from exc
 
-            newline = buffer.find(b"\n")
+        newline = buffer.find(b"\n")
 
-            if newline != -1:
-                if newline > MAX_HEADER_BYTES:
-                    raise ValueError(...)
-                header_bytes = bytes(buffer[:newline])
-                break
+        if newline != -1:
+            if newline > _MAX_HEADER_BYTES:
+                raise ValueError(
+                    "SCHEDULE header exceeds maximum size"
+                )
 
-            if len(buffer) > MAX_HEADER_BYTES:
-                raise ValueError(...)
+            return bytes(buffer[:newline])
 
-    pub_info = json.loads(header_bytes)
+        if len(buffer) > _MAX_HEADER_BYTES:
+            raise ValueError(
+                "SCHEDULE header exceeds maximum size"
+            )
+
+    raise ValueError(
+        "SCHEDULE response ended before first NDJSON row"
+    )
+
+
+def _parse_schedule_header(
+    header_bytes: bytes,
+) -> ScheduleHeader:
+    try:
+        parsed = json.loads(header_bytes)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            "SCHEDULE header is not valid JSON"
+        ) from exc
+
+    if not isinstance(parsed, dict):
+        raise ValueError(
+            "SCHEDULE header must be a JSON object"
+        )
+
+    try:
+        timetable = parsed["JsonTimetableV1"]
+        metadata = timetable["Metadata"]
+
+        extract_type_raw = metadata["type"]
+        sequence = metadata["sequence"]
+        timestamp = timetable["timestamp"]
+
+    except (KeyError, TypeError) as exc:
+        raise ValueError(
+            "SCHEDULE header does not have "
+            "the expected structure"
+        ) from exc
+
+    if not isinstance(extract_type_raw, str):
+        raise ValueError(
+            "SCHEDULE extract type must be a string"
+        )
+
+    if not isinstance(sequence, int):
+        raise ValueError(
+            "SCHEDULE sequence must be an integer"
+        )
+
+    if not isinstance(timestamp, int):
+        raise ValueError(
+            "SCHEDULE timestamp must be an integer"
+        )
+
+    try:
+        extract_type = ExtractType(
+            extract_type_raw
+        )
+    except ValueError as exc:
+        raise ValueError(
+            f"Unknown SCHEDULE extract type: "
+            f"{extract_type_raw!r}"
+        ) from exc
+
+    return ScheduleHeader(
+        extract_type=extract_type,
+        sequence=sequence,
+        timestamp=timestamp,
+    )
 
 
 def get_object_state(object_name: str) -> StoredObjectState | None:
