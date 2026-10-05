@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta, time
+from zoneinfo import ZoneInfo
 from enum import StrEnum
 from typing import assert_never
 
@@ -19,6 +20,19 @@ class Weekday(StrEnum):
     FRI = "fri"
     SAT = "sat"
     SUN = "sun"
+
+
+WEEKDAY_TO_INT = {
+    "mon": 0,
+    "tue": 1,
+    "wed": 2,
+    "thu": 3,
+    "fri": 4,
+    "sat": 5,
+    "sun": 6,
+}
+
+LONDON = ZoneInfo("Europe/London")
 
 
 class ExtractType(StrEnum):
@@ -149,7 +163,41 @@ def publication_is_fresh(
     the accepted publication window for the most recent occurrence of the
     requested weekday.
     """
-    raise NotImplementedError
+    if isinstance(schedule_request, FullSnapshotRequest):
+        return True
+
+    requested_day = schedule_request.day
+    freshness_floor = _get_freshness_floor(requested_day, now)
+
+    publication_time = datetime.fromtimestamp(
+        header.timestamp,
+        tz=timezone.utc,
+    )
+
+    return publication_time >= freshness_floor
+
+
+def _get_freshness_floor(day: Weekday, now: datetime) -> datetime:
+    """
+    Given a weekday, returns midnight of one day before of the latest date
+    of that weekday before now.
+
+    This is the freshness floor for daily updates.
+    """
+    local_now = now.astimezone(LONDON)
+    current_date = local_now.date()
+    current_weekday = current_date.weekday()
+
+    target_weekday = WEEKDAY_TO_INT[day]
+
+    days_back = (current_weekday - target_weekday) % 7
+    latest_target_date = current_date - timedelta(days=days_back)
+
+    return datetime.combine(
+        latest_target_date - timedelta(days=1),
+        time.min,
+        tzinfo=LONDON,
+    )
 
 
 def object_name(
