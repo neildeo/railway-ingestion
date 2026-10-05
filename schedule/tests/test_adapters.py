@@ -848,8 +848,8 @@ def test_upload_schedule_stops_after_three_transient_failures() -> None:
     client, blob = make_gcs_client(writer)
 
     with patch(
-        "schedule.adapters.create_requests_session",
-        return_value=session,
+        "schedule.adapters.storage.Client",
+        return_value=client,
     ):
         with pytest.raises(requests.ConnectionError):
             upload_schedule(
@@ -876,8 +876,8 @@ def test_upload_schedule_does_not_retry_non_transient_source_error() -> None:
     client, blob = make_gcs_client(writer)
 
     with patch(
-        "schedule.adapters.create_requests_session",
-        return_value=session,
+        "schedule.adapters.storage.Client",
+        return_value=client,
     ):
         with pytest.raises(requests.HTTPError):
             upload_schedule(
