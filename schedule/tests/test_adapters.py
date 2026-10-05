@@ -4,7 +4,7 @@ import gzip
 import json
 from collections.abc import Iterator
 from io import BytesIO
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 import requests
@@ -15,6 +15,9 @@ from schedule.adapters import (
     get_object_state,
     quarantine_schedule,
     upload_schedule,
+    create_requests_session,
+    get_network_rail_credentials_from_secret_manager,
+    NetworkRailCredentials,
 )
 from schedule.core import (
     ExtractType,
@@ -208,11 +211,7 @@ def test_fetch_header_row_parses_header_and_source_metadata() -> None:
     session = Mock()
     session.get.return_value = response
 
-    with patch(
-        "schedule.adapters.create_requests_session",
-        return_value=session,
-    ):
-        result = fetch_header_row(SCHEDULE_REQUEST)
+    result = fetch_header_row(SCHEDULE_REQUEST, session=session)
 
     assert result == PUBLICATION_INFO
     assert response.closed
@@ -239,11 +238,7 @@ def test_fetch_header_row_handles_header_spanning_multiple_compressed_chunks(
     session = Mock()
     session.get.return_value = response
 
-    with patch(
-        "schedule.adapters.create_requests_session",
-        return_value=session,
-    ):
-        result = fetch_header_row(SCHEDULE_REQUEST)
+    result = fetch_header_row(SCHEDULE_REQUEST, session=session)
 
     assert result == PUBLICATION_INFO
 
@@ -267,11 +262,7 @@ def test_fetch_header_row_stops_once_first_ndjson_row_is_available() -> None:
     session = Mock()
     session.get.return_value = response
 
-    with patch(
-        "schedule.adapters.create_requests_session",
-        return_value=session,
-    ):
-        result = fetch_header_row(SCHEDULE_REQUEST)
+    result = fetch_header_row(SCHEDULE_REQUEST, session=session)
 
     assert result == PUBLICATION_INFO
     assert response.closed
@@ -299,12 +290,8 @@ def test_fetch_header_row_rejects_missing_source_metadata(
     session = Mock()
     session.get.return_value = response
 
-    with patch(
-        "schedule.adapters.create_requests_session",
-        return_value=session,
-    ):
-        with pytest.raises(ValueError):
-            fetch_header_row(SCHEDULE_REQUEST)
+    with pytest.raises(ValueError):
+        fetch_header_row(SCHEDULE_REQUEST, session=session)
 
 
 def test_fetch_header_row_rejects_invalid_content_length() -> None:
@@ -319,12 +306,8 @@ def test_fetch_header_row_rejects_invalid_content_length() -> None:
     session = Mock()
     session.get.return_value = response
 
-    with patch(
-        "schedule.adapters.create_requests_session",
-        return_value=session,
-    ):
-        with pytest.raises(ValueError):
-            fetch_header_row(SCHEDULE_REQUEST)
+    with pytest.raises(ValueError):
+        fetch_header_row(SCHEDULE_REQUEST, session=session)
 
 
 def test_fetch_header_row_rejects_invalid_gzip() -> None:
@@ -336,12 +319,8 @@ def test_fetch_header_row_rejects_invalid_gzip() -> None:
     session = Mock()
     session.get.return_value = response
 
-    with patch(
-        "schedule.adapters.create_requests_session",
-        return_value=session,
-    ):
-        with pytest.raises(ValueError):
-            fetch_header_row(SCHEDULE_REQUEST)
+    with pytest.raises(ValueError):
+        fetch_header_row(SCHEDULE_REQUEST, session=session)
 
 
 def test_fetch_header_row_rejects_invalid_json() -> None:
@@ -357,12 +336,8 @@ def test_fetch_header_row_rejects_invalid_json() -> None:
     session = Mock()
     session.get.return_value = response
 
-    with patch(
-        "schedule.adapters.create_requests_session",
-        return_value=session,
-    ):
-        with pytest.raises(ValueError):
-            fetch_header_row(SCHEDULE_REQUEST)
+    with pytest.raises(ValueError):
+        fetch_header_row(SCHEDULE_REQUEST, session=session)
 
 
 @pytest.mark.parametrize(
@@ -401,12 +376,8 @@ def test_fetch_header_row_rejects_incomplete_timetable_header(
     session = Mock()
     session.get.return_value = response
 
-    with patch(
-        "schedule.adapters.create_requests_session",
-        return_value=session,
-    ):
-        with pytest.raises(ValueError):
-            fetch_header_row(SCHEDULE_REQUEST)
+    with pytest.raises(ValueError):
+        fetch_header_row(SCHEDULE_REQUEST, session=session)
 
 
 def test_fetch_header_row_rejects_header_larger_than_one_mib() -> None:
@@ -424,12 +395,8 @@ def test_fetch_header_row_rejects_header_larger_than_one_mib() -> None:
     session = Mock()
     session.get.return_value = response
 
-    with patch(
-        "schedule.adapters.create_requests_session",
-        return_value=session,
-    ):
-        with pytest.raises(ValueError):
-            fetch_header_row(SCHEDULE_REQUEST)
+    with pytest.raises(ValueError):
+        fetch_header_row(SCHEDULE_REQUEST, session=session)
 
 
 def test_fetch_header_row_retries_transient_stream_failure_from_start() -> None:
@@ -457,11 +424,7 @@ def test_fetch_header_row_retries_transient_stream_failure_from_start() -> None:
         second_response,
     ]
 
-    with patch(
-        "schedule.adapters.create_requests_session",
-        return_value=session,
-    ):
-        result = fetch_header_row(SCHEDULE_REQUEST)
+    result = fetch_header_row(SCHEDULE_REQUEST, session=session)
 
     assert result == PUBLICATION_INFO
     assert session.get.call_count == 2
@@ -644,20 +607,15 @@ def test_upload_schedule_streams_exact_compressed_bytes_to_gcs() -> None:
     writer = FakeWriter()
     client, blob = make_gcs_client(writer)
 
-    with (
-        patch(
-            "schedule.adapters.create_requests_session",
-            return_value=session,
-        ),
-        patch(
-            "schedule.adapters.storage.Client",
-            return_value=client,
-        ),
+    with patch(
+        "schedule.adapters.storage.Client",
+        return_value=client,
     ):
         upload_schedule(
             SCHEDULE_REQUEST,
             OBJECT_NAME,
             PUBLICATION_INFO,
+            session=session
         )
 
     assert writer.getvalue() == compressed
@@ -684,20 +642,15 @@ def test_upload_schedule_persists_publication_metadata() -> None:
     writer = FakeWriter()
     client, blob = make_gcs_client(writer)
 
-    with (
-        patch(
-            "schedule.adapters.create_requests_session",
-            return_value=session,
-        ),
-        patch(
-            "schedule.adapters.storage.Client",
-            return_value=client,
-        ),
+    with patch(
+        "schedule.adapters.storage.Client",
+        return_value=client,
     ):
         upload_schedule(
             SCHEDULE_REQUEST,
             OBJECT_NAME,
             PUBLICATION_INFO,
+            session=session
         )
 
     assert blob.metadata == {
@@ -746,21 +699,16 @@ def test_upload_schedule_rejects_source_change_before_transfer(
     writer = FakeWriter()
     client, blob = make_gcs_client(writer)
 
-    with (
-        patch(
-            "schedule.adapters.create_requests_session",
-            return_value=session,
-        ),
-        patch(
-            "schedule.adapters.storage.Client",
-            return_value=client,
-        ),
+    with patch(
+        "schedule.adapters.storage.Client",
+        return_value=client,
     ):
         with pytest.raises(SourceMutationError):
             upload_schedule(
                 SCHEDULE_REQUEST,
                 OBJECT_NAME,
                 PUBLICATION_INFO,
+                session=session
             )
 
     blob.open.assert_not_called()
@@ -809,20 +757,15 @@ def test_upload_schedule_retries_whole_transfer_after_transient_source_failure(
     client = Mock()
     client.bucket.return_value = bucket
 
-    with (
-        patch(
-            "schedule.adapters.create_requests_session",
-            return_value=session,
-        ),
-        patch(
-            "schedule.adapters.storage.Client",
-            return_value=client,
-        ),
+    with patch(
+        "schedule.adapters.storage.Client",
+        return_value=client,
     ):
         upload_schedule(
             SCHEDULE_REQUEST,
             OBJECT_NAME,
             PUBLICATION_INFO,
+            session=session
         )
 
     assert session.get.call_count == 2
@@ -867,20 +810,15 @@ def test_upload_schedule_retries_whole_transfer_after_transient_gcs_failure(
     client = Mock()
     client.bucket.return_value = bucket
 
-    with (
-        patch(
-            "schedule.adapters.create_requests_session",
-            return_value=session,
-        ),
-        patch(
-            "schedule.adapters.storage.Client",
-            return_value=client,
-        ),
+    with patch(
+        "schedule.adapters.storage.Client",
+        return_value=client,
     ):
         upload_schedule(
             SCHEDULE_REQUEST,
             OBJECT_NAME,
             PUBLICATION_INFO,
+            session=session
         )
 
     assert session.get.call_count == 2
@@ -909,21 +847,16 @@ def test_upload_schedule_stops_after_three_transient_failures() -> None:
     writer = FakeWriter()
     client, blob = make_gcs_client(writer)
 
-    with (
-        patch(
-            "schedule.adapters.create_requests_session",
-            return_value=session,
-        ),
-        patch(
-            "schedule.adapters.storage.Client",
-            return_value=client,
-        ),
+    with patch(
+        "schedule.adapters.create_requests_session",
+        return_value=session,
     ):
         with pytest.raises(requests.ConnectionError):
             upload_schedule(
                 SCHEDULE_REQUEST,
                 OBJECT_NAME,
                 PUBLICATION_INFO,
+                session=session
             )
 
     assert session.get.call_count == 3
@@ -942,21 +875,16 @@ def test_upload_schedule_does_not_retry_non_transient_source_error() -> None:
     writer = FakeWriter()
     client, blob = make_gcs_client(writer)
 
-    with (
-        patch(
-            "schedule.adapters.create_requests_session",
-            return_value=session,
-        ),
-        patch(
-            "schedule.adapters.storage.Client",
-            return_value=client,
-        ),
+    with patch(
+        "schedule.adapters.create_requests_session",
+        return_value=session,
     ):
         with pytest.raises(requests.HTTPError):
             upload_schedule(
                 SCHEDULE_REQUEST,
                 OBJECT_NAME,
                 PUBLICATION_INFO,
+                session=session
             )
 
     assert session.get.call_count == 1
@@ -992,10 +920,6 @@ def test_upload_schedule_lost_race_with_matching_winner_is_success() -> None:
 
     with (
         patch(
-            "schedule.adapters.create_requests_session",
-            return_value=session,
-        ),
-        patch(
             "schedule.adapters.storage.Client",
             return_value=client,
         ),
@@ -1008,6 +932,7 @@ def test_upload_schedule_lost_race_with_matching_winner_is_success() -> None:
             SCHEDULE_REQUEST,
             OBJECT_NAME,
             PUBLICATION_INFO,
+            session=session
         )
 
 
@@ -1044,10 +969,6 @@ def test_upload_schedule_lost_race_with_conflicting_winner_fails() -> None:
 
     with (
         patch(
-            "schedule.adapters.create_requests_session",
-            return_value=session,
-        ),
-        patch(
             "schedule.adapters.storage.Client",
             return_value=client,
         ),
@@ -1061,6 +982,7 @@ def test_upload_schedule_lost_race_with_conflicting_winner_fails() -> None:
                 SCHEDULE_REQUEST,
                 OBJECT_NAME,
                 PUBLICATION_INFO,
+                session=session
             )
 
 
@@ -1085,10 +1007,6 @@ def test_quarantine_schedule_streams_exact_compressed_bytes() -> None:
 
     with (
         patch(
-            "schedule.adapters.create_requests_session",
-            return_value=session,
-        ),
-        patch(
             "schedule.adapters.storage.Client",
             return_value=client,
         ),
@@ -1097,6 +1015,7 @@ def test_quarantine_schedule_streams_exact_compressed_bytes() -> None:
             SCHEDULE_REQUEST,
             QUARANTINE_OBJECT_NAME,
             PUBLICATION_INFO,
+            session=session
         )
 
     assert writer.getvalue() == compressed
@@ -1117,10 +1036,6 @@ def test_quarantine_schedule_uses_supplied_quarantine_object_name() -> None:
 
     with (
         patch(
-            "schedule.adapters.create_requests_session",
-            return_value=session,
-        ),
-        patch(
             "schedule.adapters.storage.Client",
             return_value=client,
         ),
@@ -1129,6 +1044,7 @@ def test_quarantine_schedule_uses_supplied_quarantine_object_name() -> None:
             SCHEDULE_REQUEST,
             QUARANTINE_OBJECT_NAME,
             PUBLICATION_INFO,
+            session=session
         )
 
     client.bucket.assert_called_once()
@@ -1157,10 +1073,6 @@ def test_quarantine_schedule_rejects_source_change_before_transfer() -> None:
 
     with (
         patch(
-            "schedule.adapters.create_requests_session",
-            return_value=session,
-        ),
-        patch(
             "schedule.adapters.storage.Client",
             return_value=client,
         ),
@@ -1170,6 +1082,7 @@ def test_quarantine_schedule_rejects_source_change_before_transfer() -> None:
                 SCHEDULE_REQUEST,
                 QUARANTINE_OBJECT_NAME,
                 PUBLICATION_INFO,
+                session=session
             )
 
     blob.open.assert_not_called()
@@ -1215,10 +1128,6 @@ def test_quarantine_schedule_retries_transient_failure_from_start() -> None:
 
     with (
         patch(
-            "schedule.adapters.create_requests_session",
-            return_value=session,
-        ),
-        patch(
             "schedule.adapters.storage.Client",
             return_value=client,
         ),
@@ -1227,8 +1136,51 @@ def test_quarantine_schedule_retries_transient_failure_from_start() -> None:
             SCHEDULE_REQUEST,
             QUARANTINE_OBJECT_NAME,
             PUBLICATION_INFO,
+            session=session
         )
 
     assert session.get.call_count == 2
     assert blob.open.call_count == 2
     assert second_writer.getvalue() == compressed
+
+
+def test_requests_session_uses_network_rail_credentials() -> None:
+    credentials = NetworkRailCredentials(
+        username="test-user",
+        password="test-password",
+    )
+
+    session = create_requests_session(credentials)
+
+    assert session.auth == (
+        "test-user",
+        "test-password",
+    )
+
+
+def test_secret_manager_credentials_are_parsed() -> None:
+    response = Mock()
+    response.payload.data = (
+        b'{"username": "test-user", '
+        b'"password": "test-password"}'
+    )
+
+    client = Mock()
+    client.access_secret_version.return_value = response
+
+    with patch(
+        "schedule.adapters."
+        "secretmanager.SecretManagerServiceClient",
+        return_value=client,
+    ):
+        credentials = (
+            get_network_rail_credentials_from_secret_manager(
+                project_id="test-project",
+                secret_id="network-rail-credentials",
+            )
+        )
+
+    assert credentials == NetworkRailCredentials(
+        username="test-user",
+        password="test-password",
+    )

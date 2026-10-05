@@ -17,8 +17,11 @@ import zlib
 import json
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
-from google.cloud import storage
+from google.cloud import storage, secretmanager
 from google.api_core import exceptions as google_exceptions, retry as google_retry
+
+from dataclasses import dataclass
+from json import JSONDecoder
 
 
 MAX_RETRIES = 5
@@ -48,13 +51,67 @@ _MAX_TRANSFER_ATTEMPTS = 3
 _TRANSFER_CHUNK_SIZE = 1024 * 1024  # 1 MiB
 
 
-def create_requests_session() -> requests.Session:
+@dataclass(frozen=True)
+class NetworkRailCredentials:
+    username: str
+    password: str
+
+
+def get_network_rail_credentials_from_secret_manager(
+    project_id: str,
+    secret_id: str,
+) -> NetworkRailCredentials:
+    client = secretmanager.SecretManagerServiceClient()
+
+    secret_name = (
+        f"projects/{project_id}/secrets/"
+        f"{secret_id}/versions/latest"
+    )
+
+    secret = client.access_secret_version(
+        name=secret_name,
+        retry=google_retry.Retry(
+            initial=1.0,
+            maximum=8.0,
+            multiplier=2.0,
+            timeout=30.0,
+        ),
+    )
+
+    payload: dict[str, str] = JSONDecoder().decode(
+        secret.payload.data.decode()
+    )
+
+    try:
+        username = payload["username"]
+        password = payload["password"]
+    except KeyError as exc:
+        raise ValueError(
+            f"Secret payload is missing {exc.args[0]}"
+        ) from exc
+
+    return NetworkRailCredentials(
+        username=username,
+        password=password,
+    )
+
+
+def create_requests_session(
+    credentials: NetworkRailCredentials,
+) -> requests.Session:
     retry_policy = Retry(
         total=MAX_RETRIES,
         allowed_methods=frozenset({"GET"}),
         status_forcelist=RETRYABLE_STATUS_CODES,
     )
+
     s = requests.Session()
+
+    s.auth = (
+        credentials.username,
+        credentials.password,
+    )
+
     s.mount(
         prefix="https://",
         adapter=HTTPAdapter(max_retries=retry_policy),
@@ -80,9 +137,10 @@ def get_endpoint_url(schedule_request: ScheduleRequest) -> str:
 
 def fetch_header_row(
     schedule_request: ScheduleRequest,
+    *,
+    session: requests.Session,
 ) -> SchedulePublicationInfo:
     url = get_endpoint_url(schedule_request)
-    session = create_requests_session()
 
     for attempt in range(_MAX_PROBE_ATTEMPTS):
         try:
@@ -312,6 +370,8 @@ def upload_schedule(
     schedule_request: ScheduleRequest,
     object_name: str,
     expected_metadata: SchedulePublicationInfo,
+    *,
+    session: requests.Session,
 ) -> None:
     """
     Perform a fresh full source request and stream the exact compressed bytes
@@ -327,6 +387,7 @@ def upload_schedule(
         object_name=object_name,
         expected_metadata=expected_metadata,
         resolve_concurrent_create=True,
+        session=session,
     )
 
 
@@ -334,6 +395,8 @@ def quarantine_schedule(
     schedule_request: ScheduleRequest,
     object_name: str,
     expected_metadata: SchedulePublicationInfo,
+    *,
+    session: requests.Session,
 ) -> None:
     """
     Perform a fresh full source request and preserve the conflicting artefact
@@ -347,6 +410,7 @@ def quarantine_schedule(
         object_name=object_name,
         expected_metadata=expected_metadata,
         resolve_concurrent_create=False,
+        session=session,
     )
 
 
@@ -379,9 +443,9 @@ def _stream_schedule_to_gcs(
     object_name: str,
     expected_metadata: SchedulePublicationInfo,
     resolve_concurrent_create: bool,
+    session: requests.Session,
 ) -> None:
     url = get_endpoint_url(schedule_request)
-    session = create_requests_session()
 
     client = storage.Client()
     bucket = client.bucket(_get_raw_bucket_name())

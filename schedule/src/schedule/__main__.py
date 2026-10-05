@@ -3,14 +3,21 @@ from __future__ import annotations
 import os
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+from functools import partial
 
 from schedule.core import (
     FullSnapshotRequest,
     ScheduleRequest,
     UpdateRequest,
     Weekday,
+    fetch_and_upload_schedule,
 )
 
+from schedule import adapters
+
+PROJECT_ID = "railway-analytics-508615"
+
+SECRET_ID = "network-rail-credentials"
 
 _LONDON = ZoneInfo("Europe/London")
 
@@ -88,25 +95,43 @@ def main() -> None:
     )
     update_day = os.environ.get("UPDATE_DAY")
 
+    now = datetime.now(timezone.utc)
+
     schedule_request = resolve_schedule_request(
         full_snapshot=full_snapshot,
         update_day=update_day,
-        now=datetime.now(timezone.utc),
+        now=now,
     )
 
-    # Later:
-    #
-    # fetch_and_upload_schedule(
-    #     schedule_request=schedule_request,
-    #     require_fresh_publication=require_fresh_publication,
-    #     fetch_header_row=real_fetch_header_row,
-    #     get_object_state=real_get_object_state,
-    #     upload_schedule=real_upload_schedule,
-    #     quarantine_schedule=real_quarantine_schedule,
-    #     utc_now=lambda: datetime.now(timezone.utc),
-    # )
+    credentials = (
+        adapters.get_network_rail_credentials_from_secret_manager(
+            project_id=PROJECT_ID,
+            secret_id=SECRET_ID,
+        )
+    )
 
-    _ = schedule_request, require_fresh_publication
+    session = adapters.create_requests_session(
+        credentials
+    )
+
+    fetch_and_upload_schedule(
+        schedule_request=schedule_request,
+        require_fresh_publication=require_fresh_publication,
+        fetch_header_row=partial(
+            adapters.fetch_header_row,
+            session=session,
+        ),
+        get_object_state=adapters.get_object_state,
+        upload_schedule=partial(
+            adapters.upload_schedule,
+            session=session,
+        ),
+        quarantine_schedule=partial(
+            adapters.quarantine_schedule,
+            session=session,
+        ),
+        utc_now=lambda: now,
+    )
 
 
 if __name__ == "__main__":

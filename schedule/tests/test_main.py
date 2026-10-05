@@ -1,8 +1,14 @@
 from datetime import datetime, timezone
 
 import pytest
+from unittest.mock import Mock, patch
 
-from schedule.__main__ import resolve_schedule_request
+from schedule.__main__ import (
+    resolve_schedule_request,
+    PROJECT_ID,
+    SECRET_ID,
+    main,
+)
 from schedule.core import (
     FullSnapshotRequest,
     UpdateRequest,
@@ -79,3 +85,44 @@ def test_update_rejects_invalid_update_day() -> None:
             update_day="funday",
             now=NOW,
         )
+
+
+def test_main_fetches_credentials_and_creates_session_once(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("FULL_SNAPSHOT", "false")
+    monkeypatch.setenv(
+        "REQUIRE_FRESH_PUBLICATION",
+        "false",
+    )
+    monkeypatch.delenv("UPDATE_DAY", raising=False)
+
+    credentials = Mock()
+    session = Mock()
+
+    with (
+        patch(
+            "schedule.__main__.adapters."
+            "get_network_rail_credentials_from_secret_manager",
+            return_value=credentials,
+        ) as get_credentials,
+        patch(
+            "schedule.__main__.adapters.create_requests_session",
+            return_value=session,
+        ) as create_session,
+        patch(
+            "schedule.__main__.fetch_and_upload_schedule",
+        ) as run_ingest,
+    ):
+        main()
+
+    get_credentials.assert_called_once_with(
+        project_id=PROJECT_ID,
+        secret_id=SECRET_ID,
+    )
+
+    create_session.assert_called_once_with(
+        credentials
+    )
+
+    run_ingest.assert_called_once()
