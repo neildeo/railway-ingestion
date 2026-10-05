@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import StrEnum
 from typing import assert_never
-import logging
 
 
 logger = logging.getLogger(__name__)
@@ -61,9 +61,7 @@ class SourceMetadata:
 
 @dataclass(frozen=True)
 class SchedulePublicationInfo:
-    """
-    Immutable facts obtained from the short probe request.
-    """
+    """Immutable facts obtained from the short probe request."""
 
     header: ScheduleHeader
     source_metadata: SourceMetadata
@@ -77,7 +75,7 @@ class StoredObjectState:
     generation: int
 
 
-class PublicationNotAvailableError(RuntimeError):
+class FreshPublicationNotAvailableError(RuntimeError):
     pass
 
 
@@ -91,7 +89,7 @@ class SourceMutationError(RuntimeError):
 
 type FetchHeaderRow = Callable[
     [ScheduleRequest],
-    SchedulePublicationInfo | None,
+    SchedulePublicationInfo,
 ]
 
 type GetObjectState = Callable[[str], StoredObjectState | None]
@@ -124,7 +122,9 @@ def validate_header_matches_schedule_request(
     schedule_request: ScheduleRequest,
     header: ScheduleHeader,
 ) -> None:
-    expected_extract_type = extract_type_for_schedule_request(schedule_request)
+    expected_extract_type = extract_type_for_schedule_request(
+        schedule_request
+    )
 
     if header.extract_type != expected_extract_type:
         raise PublicationMismatchError(
@@ -132,6 +132,24 @@ def validate_header_matches_schedule_request(
             f"expected={expected_extract_type.value}, "
             f"actual={header.extract_type.value}"
         )
+
+
+def publication_is_fresh(
+    *,
+    schedule_request: ScheduleRequest,
+    header: ScheduleHeader,
+    now: datetime,
+) -> bool:
+    """
+    Return whether the publication is fresh enough for this request.
+
+    Full snapshots are accepted regardless of timestamp.
+
+    Update publications are fresh when their header timestamp falls within
+    the accepted publication window for the most recent occurrence of the
+    requested weekday.
+    """
+    raise NotImplementedError
 
 
 def object_name(
@@ -169,7 +187,7 @@ def quarantine_object_name(
 def fetch_and_upload_schedule(
     *,
     schedule_request: ScheduleRequest,
-    require_publication: bool,
+    require_fresh_publication: bool,
     fetch_header_row: FetchHeaderRow,
     get_object_state: GetObjectState,
     upload_schedule: UploadSchedule,
@@ -183,17 +201,30 @@ def fetch_and_upload_schedule(
     This is deliberately orchestration only. HTTP probing, partial gzip
     decompression, full HTTP streaming, and GCS streaming belong in adapters.
     """
+    now = utc_now()
+
     pub_info = fetch_header_row(schedule_request)
 
-    if pub_info is None:
-        if require_publication:
-            raise PublicationNotAvailableError
+    validate_header_matches_schedule_request(
+        schedule_request=schedule_request,
+        header=pub_info.header,
+    )
+
+    if not publication_is_fresh(
+        schedule_request=schedule_request,
+        header=pub_info.header,
+        now=now,
+    ):
+        if require_fresh_publication:
+            raise FreshPublicationNotAvailableError
 
         extra = {
-            "event": "schedule_publication_not_available",
+            "event": "schedule_publication_stale",
             "extract_type": extract_type_for_schedule_request(
                 schedule_request
             ).value,
+            "sequence": pub_info.header.sequence,
+            "timestamp": pub_info.header.timestamp,
         }
 
         match schedule_request:
@@ -203,38 +234,37 @@ def fetch_and_upload_schedule(
                 pass
 
         logger.warning(
-            "Expected SCHEDULE publication not available",
+            "Fresh SCHEDULE publication not yet available",
             extra=extra,
         )
         return
 
-    validate_header_matches_schedule_request(
+    name = object_name(
         schedule_request=schedule_request,
-        header=pub_info.header
+        sequence=pub_info.header.sequence,
     )
-
-    name = object_name(schedule_request=schedule_request,
-                       sequence=pub_info.header.sequence)
     object_state = get_object_state(name)
 
     if object_state is None:
-        # No existing file - upload published file
-        upload_schedule(schedule_request, name, pub_info)
+        upload_schedule(
+            schedule_request,
+            name,
+            pub_info,
+        )
         return
 
-    # If metadata matches, we no-op
     if object_state.source_metadata == pub_info.source_metadata:
         logger.info(
-            "Published SCHEDULE metadata matches existing object. Exiting...")
+            "Published SCHEDULE metadata matches existing object. Exiting..."
+        )
         return
 
-    # Otherwise we have a content mismatch - quarantine the file for later inspection
     quarantine_schedule(
         schedule_request,
         quarantine_object_name(
             schedule_request,
             pub_info.header.sequence,
-            utc_now(),
+            now,
         ),
         pub_info,
     )

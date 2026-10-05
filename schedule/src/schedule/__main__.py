@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 import os
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from schedule.core import (
     FullSnapshotRequest,
@@ -10,6 +11,8 @@ from schedule.core import (
     Weekday,
 )
 
+
+_LONDON = ZoneInfo("Europe/London")
 
 _WEEKDAY_BY_PYTHON_WEEKDAY = (
     Weekday.MON,
@@ -46,7 +49,8 @@ def resolve_schedule_request(
     Resolve runtime configuration into a valid ScheduleRequest.
 
     The core ingest never receives an update request without a concrete day.
-    If UPDATE_DAY is absent, main resolves it to yesterday's weekday.
+    If UPDATE_DAY is absent, main resolves it to yesterday's weekday in the
+    Network Rail operational timezone.
     """
     if full_snapshot:
         if update_day is not None:
@@ -57,22 +61,31 @@ def resolve_schedule_request(
 
     if update_day is not None:
         try:
-            return UpdateRequest(day=Weekday(update_day.strip().lower()))
+            return UpdateRequest(
+                day=Weekday(update_day.strip().lower())
+            )
         except ValueError as exc:
             raise ValueError(
-                "UPDATE_DAY must be one of: mon, tue, wed, thu, fri, sat, sun"
+                "UPDATE_DAY must be one of: "
+                "mon, tue, wed, thu, fri, sat, sun"
             ) from exc
 
-    yesterday = now.astimezone(timezone.utc).date() - timedelta(days=1)
-    return UpdateRequest(day=_WEEKDAY_BY_PYTHON_WEEKDAY[yesterday.weekday()])
+    yesterday = (
+        now.astimezone(_LONDON).date()
+        - timedelta(days=1)
+    )
+
+    return UpdateRequest(
+        day=_WEEKDAY_BY_PYTHON_WEEKDAY[yesterday.weekday()]
+    )
 
 
 def main() -> None:
-    """
-    Runtime/configuration boundary.
-    """
+    """Runtime/configuration boundary."""
     full_snapshot = parse_bool_env("FULL_SNAPSHOT")
-    require_publication = parse_bool_env("REQUIRE_PUBLICATION")
+    require_fresh_publication = parse_bool_env(
+        "REQUIRE_FRESH_PUBLICATION"
+    )
     update_day = os.environ.get("UPDATE_DAY")
 
     schedule_request = resolve_schedule_request(
@@ -85,7 +98,7 @@ def main() -> None:
     #
     # fetch_and_upload_schedule(
     #     schedule_request=schedule_request,
-    #     require_publication=require_publication,
+    #     require_fresh_publication=require_fresh_publication,
     #     fetch_header_row=real_fetch_header_row,
     #     get_object_state=real_get_object_state,
     #     upload_schedule=real_upload_schedule,
@@ -93,7 +106,7 @@ def main() -> None:
     #     utc_now=lambda: datetime.now(timezone.utc),
     # )
 
-    _ = schedule_request, require_publication
+    _ = schedule_request, require_fresh_publication
 
 
 if __name__ == "__main__":

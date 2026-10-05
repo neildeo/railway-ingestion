@@ -3,16 +3,54 @@ from __future__ import annotations
 from schedule.core import (
     SchedulePublicationInfo,
     ScheduleRequest,
+    FullSnapshotRequest,
+    UpdateRequest,
     StoredObjectState,
     SourceMetadata,
 )
 
-from requests import Session
+import requests
+import zlib
+import json
+from requests.adapters import HTTPAdapter
+from urllib3 import Retry
 from google.cloud import storage
 
 
-def create_requests_session() -> Session:
-    raise NotImplementedError
+MAX_RETRIES = 5
+
+RETRYABLE_STATUS_CODES = {
+    429,
+    500,
+    502,
+    503,
+    504,
+}
+
+MAX_HEADER_BYTES = 1_024 * 1_024  # 1 MiB
+
+
+def create_requests_session() -> requests.Session:
+    retry_policy = Retry(
+        total=MAX_RETRIES,
+        allowed_methods=frozenset({"GET"}),
+        status_forcelist=RETRYABLE_STATUS_CODES,
+    )
+    s = requests.Session()
+    s.mount(
+        prefix="https://",
+        adapter=HTTPAdapter(max_retries=retry_policy),
+    )
+
+    return s
+
+
+def get_endpoint_url(schedule_request: ScheduleRequest) -> str:
+    match schedule_request:
+        case FullSnapshotRequest():
+            return "https://publicdatafeeds.networkrail.co.uk/ntrod/CifFileAuthenticate?type=CIF_ALL_FULL_DAILY&day=toc-full"
+        case UpdateRequest(day):
+            return f"https://publicdatafeeds.networkrail.co.uk/ntrod/CifFileAuthenticate?type=CIF_ALL_FULL_DAILY&day={day.value}"
 
 
 def fetch_header_row(
@@ -32,7 +70,35 @@ def fetch_header_row(
     Return None only for the normal "publication not available yet" outcome.
     Transport/auth/parsing failures should raise.
     """
-    raise NotImplementedError
+    url = get_endpoint_url(schedule_request)
+    session = create_requests_session()
+
+    # Need to inject auth info here
+
+    decompressor = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    buffer = bytearray()
+    header_bytes = bytes()
+
+    with session.get(url, stream=True) as response:
+        # Grab header info - how?
+        for compressed_chunk in response.iter_content(chunk_size=1_024):
+            if not compressed_chunk:
+                continue
+
+            buffer.extend(decompressor.decompress(compressed_chunk))
+
+            newline = buffer.find(b"\n")
+
+            if newline != -1:
+                if newline > MAX_HEADER_BYTES:
+                    raise ValueError(...)
+                header_bytes = bytes(buffer[:newline])
+                break
+
+            if len(buffer) > MAX_HEADER_BYTES:
+                raise ValueError(...)
+
+    pub_info = json.loads(header_bytes)
 
 
 def get_object_state(object_name: str) -> StoredObjectState | None:

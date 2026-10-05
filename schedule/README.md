@@ -40,25 +40,72 @@ The important feed-level identity is:
 
 For this project we treat that pair as an immutable source identifier. This is an architectural assumption inferred from the sequential feed semantics rather than an explicit immutability guarantee in the source documentation.
 
-Weekly full snapshots provide a checkpoint and later allow reconstructed state to be validated against Network Rail's own full state. If the immutability assumption turns out to be wrong, or our replay logic is wrong, that reconciliation should expose the drift quickly.
+The header `timestamp` is treated as a Unix timestamp describing the publication represented by the extract. For daily updates it is used to determine whether a weekday-addressed source slot has rolled forward to a sufficiently recent publication.
+
+Weekly full snapshots provide a checkpoint and later allow reconstructed state to be validated against Network Rail's own full state. If the immutability assumption turns out to be wrong, or our replay logic is wrong, that reconciliation should expose the drift.
 
 Network Rail documentation:
 
 - SCHEDULE feed: https://wiki.openraildata.com/index.php/SCHEDULE
 - JSON format: https://wiki.openraildata.com/index.php/JSON_File_Format
 
+## Weekday-slot behaviour
+
+Network Rail update extracts are addressed by weekday:
+
+```text
+toc-update-mon
+toc-update-tue
+...
+toc-update-sun
+```
+
+These endpoints should be understood as **weekday slots**, not as requests for a specific historical date.
+
+Observed behaviour shows that when a new publication for a weekday has not yet replaced the previous one, the endpoint may continue returning the object from the previous week rather than returning no object.
+
+For example, on Sunday 4 October 2026:
+
+```text
+toc-update-sat
+  -> sequence 5249
+  -> timestamp 2026-10-04 00:30:33 UTC
+
+toc-update-sun
+  -> sequence 5243
+  -> timestamp 2026-09-28 00:30:35 UTC
+```
+
+The Saturday slot had rolled forward to the current publication. The Sunday slot was still serving the previous week's publication.
+
+The ingest therefore must distinguish:
+
+```text
+source unavailable or malformed
+```
+
+from:
+
+```text
+source healthy but weekday slot stale
+```
+
+A stale update publication is a normal source-lateness condition. Failure to obtain and parse any valid publication is not.
+
 ## Deployment shape
 
 There is one SCHEDULES Python deployable and one container image.
 
-Terraform creates separate Cloud Run Jobs which use the same image with different runtime configuration. The two behavioural flags are:
+Terraform creates separate Cloud Run Jobs which use the same image with different runtime configuration.
+
+The primary behavioural flags are:
 
 ```text
 FULL_SNAPSHOT=true|false
-REQUIRE_PUBLICATION=true|false
+REQUIRE_FRESH_PUBLICATION=true|false
 ```
 
-Update mode also supports an optional manual-recovery override:
+Update mode also supports an optional manual override:
 
 ```text
 UPDATE_DAY=mon|tue|wed|thu|fri|sat|sun
@@ -69,57 +116,115 @@ UPDATE_DAY=mon|tue|wed|thu|fri|sat|sun
 - `true` -> full snapshot;
 - `false` -> daily update.
 
-When `FULL_SNAPSHOT=false`, `UPDATE_DAY` selects the weekday-specific Network Rail update slot. In normal scheduled operation it is unset, and the application derives yesterday's weekday automatically. For example, a Thursday run requests `toc-update-wed`. For manual recovery, `UPDATE_DAY=tue` explicitly requests `toc-update-tue`.
+When `FULL_SNAPSHOT=false`, `UPDATE_DAY` selects the weekday-specific Network Rail update slot.
 
-`UPDATE_DAY` is only valid for update mode. Supplying it with `FULL_SNAPSHOT=true` should be treated as invalid configuration rather than silently ignored.
+In normal scheduled operation it is unset, and the application derives yesterday's weekday using the `Europe/London` calendar. For example, a Thursday run requests `toc-update-wed`.
 
-`REQUIRE_PUBLICATION` expresses a source-system expectation only:
+For manual recovery or investigation:
 
-- `false` -> it is acceptable for Network Rail not to have published the expected artefact yet;
-- `true` -> by this invocation, the publication is required to exist.
+```text
+UPDATE_DAY=tue
+```
 
-`REQUIRE_PUBLICATION` does **not** change GCS idempotency behaviour.
+explicitly requests `toc-update-tue`.
+
+`UPDATE_DAY` is only valid for update mode. Supplying it with `FULL_SNAPSHOT=true` is invalid configuration.
+
+### `REQUIRE_FRESH_PUBLICATION`
+
+This flag applies the operational deadline policy to **daily update freshness**.
+
+For an update request:
+
+```text
+false
+  -> a stale weekday slot is tolerated;
+     emit a structured warning and exit successfully
+
+true
+  -> a stale weekday slot is an operational failure;
+     exit non-zero
+```
+
+The flag does not determine whether an HTTP object must exist. A failure to obtain a valid SCHEDULE publication at all is always an error.
+
+Full snapshots do not currently use timestamp freshness as an ingest gate. Whatever valid full publication the endpoint currently serves is accepted and then subjected to the normal identity/provenance logic.
+
+`REQUIRE_FRESH_PUBLICATION` does **not** change GCS idempotency behaviour.
 
 A likely schedule is:
 
 ```text
 Daily update
-  early run       FULL_SNAPSHOT=false  REQUIRE_PUBLICATION=false
-  backup run      FULL_SNAPSHOT=false  REQUIRE_PUBLICATION=true
+  early run       FULL_SNAPSHOT=false  REQUIRE_FRESH_PUBLICATION=false
+  backup run      FULL_SNAPSHOT=false  REQUIRE_FRESH_PUBLICATION=true
 
 Weekly full
-  early run       FULL_SNAPSHOT=true   REQUIRE_PUBLICATION=false
-  backup run      FULL_SNAPSHOT=true   REQUIRE_PUBLICATION=true
+  FULL_SNAPSHOT=true
 ```
 
-The exact scheduler times are infrastructure configuration. The important behaviour is that the early run is tolerant of late source publication while the later run acts as the operational deadline.
+The exact scheduler times are infrastructure configuration.
 
+For updates, the important behaviour is that the early run tolerates a weekday slot which has not yet rolled forward, while the later run acts as the operational deadline.
+
+## Update freshness
+
+Freshness is a property of daily updates only.
+
+The application:
+
+1. determines the most recent calendar date matching the requested weekday in `Europe/London`;
+2. takes midnight at the beginning of that date;
+3. subtracts 24 hours to create a grace window;
+4. compares the publication header timestamp against that lower bound.
+
+Conceptually:
+
+```text
+freshness_floor =
+  midnight at latest requested weekday
+  minus 24 hours
+```
+
+The interval is lower-bounded only:
+
+```text
+header timestamp >= freshness_floor
+  -> fresh
+
+header timestamp < freshness_floor
+  -> stale
+```
+
+The 24-hour grace window avoids overfitting the ingest to an exact Network Rail generation time while still clearly rejecting a weekday slot which is still serving the previous week's publication.
+
+Full snapshots bypass this freshness check.
 
 ## Update-day selection and recovery window
 
-Network Rail update extracts are addressed by weekday rather than by an arbitrary calendar date. The update request uses a value such as:
+In normal scheduled operation the application derives the previous weekday automatically.
+
+For example:
 
 ```text
-toc-update-mon
-toc-update-tue
-...
-toc-update-sun
+Thursday run
+  -> request toc-update-wed
 ```
 
-In ordinary scheduled operation the application derives the previous weekday automatically. This keeps the Cloud Run configuration simple and makes the normal daily job equivalent to the documented Network Rail usage.
-
-The optional `UPDATE_DAY` override exists for manual recovery. If a scheduled ingest is missed, the module can be run locally or manually with an explicit weekday, for example:
+The optional `UPDATE_DAY` override exists for manual recovery and investigation:
 
 ```text
 FULL_SNAPSHOT=false
 UPDATE_DAY=tue
 ```
 
-This asks Network Rail for the Tuesday update regardless of the current day.
+This asks Network Rail for the object currently occupying the Tuesday slot.
 
-The weekday interface creates a practical recovery window of roughly one week. The feed should not be treated as a historical archive: after the same weekday slot rolls around again, `toc-update-tue` may refer to the newer Tuesday rather than the missed one.
+Because the upstream interface exposes weekday slots rather than arbitrary historical publications, this is not a general historical backfill mechanism.
 
-This is one reason the project takes weekly full snapshots. A recent full snapshot provides a bounded recovery checkpoint if an older delta can no longer be retrieved. In the normal case, the latest trusted full snapshot plus all subsequent sequential updates is sufficient to reconstruct present state.
+Once a weekday slot has rolled over again, the earlier delta may no longer be obtainable from the live Network Rail endpoint.
+
+This limitation is acceptable for this project because periodic full snapshots provide eventual recovery checkpoints. A missed delta can make a particular replay interval incomplete, but a later trusted full snapshot restores a complete current state.
 
 ## GCS layout
 
@@ -138,7 +243,9 @@ schedules/
       schedules.json.gz
 ```
 
-No acquisition date is needed in the object path. The sequence number is the authoritative ordering coordinate and cross-relates full and update artefacts.
+No acquisition date is needed in the canonical object path.
+
+The sequence number is the logical publication coordinate and cross-relates full and update artefacts.
 
 Quarantined conflicts live separately:
 
@@ -150,7 +257,9 @@ schedules/
         2026-10-03T10-03-42.381927Z.json.gz
 ```
 
-The quarantine timestamp records when our ingest observed the conflicting artefact. Microsecond precision makes accidental collisions negligible while remaining human-readable.
+The quarantine timestamp records when the ingest observed the conflicting artefact. Microsecond precision makes accidental collisions negligible while remaining human-readable.
+
+Canonical objects are create-only. There is no normal overwrite path.
 
 ## Metadata provenance
 
@@ -166,11 +275,21 @@ Metadata.sequence
 timestamp
 ```
 
-Other header fields such as owner and sender are useful provenance but are not central to ingest control flow.
+Their roles are distinct:
+
+```text
+(type, sequence)
+  -> logical publication identity
+
+timestamp
+  -> update-publication freshness and provenance
+```
+
+Other header fields such as owner and sender are useful source information but are not central to ingest control flow.
 
 ### 2. HTTP / S3 object metadata
 
-Read from the redirected S3 response headers:
+Read from the redirected source response headers:
 
 ```text
 ETag
@@ -178,13 +297,13 @@ Last-Modified
 Content-Length
 ```
 
-These describe the published source object rather than the timetable semantics.
+These describe the physical source object rather than the timetable publication semantics.
+
+They are treated as opaque provenance values. In particular, `ETag` is not assumed to be an MD5 checksum.
 
 ### 3. GCS custom object metadata
 
-Selected values from both source layers are persisted onto the GCS object so most operational comparisons do not require reopening and decompressing the file.
-
-Normal objects should retain at least:
+Selected values from both source layers are persisted on the GCS object:
 
 ```text
 source_type
@@ -195,104 +314,188 @@ source_last_modified
 source_content_length
 ```
 
-The exact gzip object remains the authoritative raw evidence. GCS metadata is convenience and provenance information.
+The exact gzip object remains the authoritative raw evidence. GCS metadata exists to make operational comparisons cheap.
 
 ## Streaming model
 
 The full snapshot is roughly 130 MiB compressed and more than 3 GiB decompressed, so the ingest must not materialise the whole artefact in memory.
 
-The initial probe request is opened with streaming enabled. The probe follows the same restart-from-scratch principle for transient failures. If the short source stream fails before the first NDJSON record has been obtained, the failed response is discarded and a fresh probe request begins from byte zero. Non-transient failures are not retried.
+### Probe request
 
-The probe reads only enough compressed bytes to decompress the first NDJSON line. Compressed chunks are fed incrementally into a stateful gzip decompressor, while the resulting decompressed bytes are buffered only until the first newline is found. A defensive upper bound is applied to this decompressed header buffer so a malformed source cannot cause unbounded probing.
+The initial request is opened with streaming enabled.
 
-Once the first NDJSON record has been parsed:
+The probe:
 
-1. capture the source HTTP metadata;
-2. validate the timetable header;
-3. derive `(type, sequence)`;
-4. derive the final GCS object path;
-5. check GCS for an object at that path;
-6. close the probe response;
-7. either no-op, quarantine, or begin a fresh transfer request.
+1. follows the authenticated Network Rail request to the source object;
+2. captures the required HTTP metadata;
+3. reads compressed chunks incrementally;
+4. feeds them into a stateful gzip decompressor;
+5. buffers decompressed output only until the first newline;
+6. parses the first NDJSON record as `JsonTimetableV1`;
+7. closes the response.
 
-Uploads and quarantines therefore use a second HTTP request rather than continuing the probe response.
+Compressed HTTP chunk boundaries have no semantic significance. A chunk may contain part of a DEFLATE structure, one record, or several records. The stateful decompressor retains the state necessary to continue across arbitrary chunk boundaries.
 
-Before any transfer begins, the fresh response's source metadata is compared with the metadata observed during the probe. If it differs, the operation fails because the core decision was made against a different source artefact.
+A defensive upper bound of 1 MiB is applied to the first decompressed NDJSON line. If no newline occurs within that limit, the publication is malformed.
 
-If the metadata still matches, the compressed response body is copied chunk-by-chunk directly from the HTTP stream into the GCS writer. The transfer path does not decompress the timetable data.
+A successful probe always returns a `SchedulePublicationInfo`.
 
-The ingest therefore preserves the exact upstream gzip bytes while keeping memory use bounded.
+It does **not** return `None` for late publication.
+
+A source which cannot provide a valid, parseable SCHEDULE artefact is an error.
+
+### Probe retries
+
+If a transient source/network failure occurs before the first NDJSON record has been obtained, the failed probe is discarded and a fresh request begins from byte zero.
+
+The decompressor and header buffer are recreated for each attempt.
+
+Non-transient failures are not retried.
+
+### Transfer request
+
+If core decides that an upload or quarantine is required, the operation makes a new HTTP request rather than continuing the probe response.
+
+Before transfer begins, all required source metadata from the fresh response must exactly match the metadata observed during the probe.
+
+If it differs, the source changed between decision and transfer and the operation fails immediately.
+
+If it matches, the compressed response body is copied chunk-by-chunk directly into the GCS writer.
+
+The transfer path does not decompress the timetable.
+
+The ingest therefore preserves the exact upstream gzip bytes while keeping application memory bounded.
 
 ## Core control flow
 
-Every invocation follows the same GCS-side decision logic regardless of whether it is an early run, backup run, retry, manual invocation, or concurrent duplicate.
-
-Conceptually:
+The core separates three concerns:
 
 ```text
-probe source artefact
-  -> obtain source metadata
-  -> partially decompress first NDJSON record
-  -> close probe response
-  -> validate header
-  -> extract source type, sequence, timestamp
-  -> derive GCS object path
-  -> inspect GCS
+source health
+  -> can a valid publication be fetched and parsed?
 
-GCS object absent
-  -> make fresh source request
-  -> verify source metadata still matches probe
-  -> stream exact compressed bytes to create-only GCS object
+publication freshness
+  -> for updates, has the requested weekday slot rolled forward?
 
-GCS object present and provenance matches
-  -> healthy no-op
-
-GCS object present and provenance differs
-  -> make fresh source request
-  -> verify source metadata still matches probe
-  -> stream exact compressed bytes to quarantine
-  -> fail loudly
+object provenance
+  -> does this logical publication match any canonical object already stored?
 ```
 
-`REQUIRE_PUBLICATION` only affects the source-publication branch before normal ingest can proceed.
-
-## Source publication behaviour
-
-The early and backup runs differ only in how they react when the expected Network Rail publication is not yet available.
-
-### `REQUIRE_PUBLICATION=false`
-
-If the expected publication is absent or stale:
+The control flow is:
 
 ```text
-emit structured WARNING
-exit successfully
+probe source
+  |
+  v
+valid source + valid JsonTimetableV1?
+  |
+  +-- no
+  |     -> loud failure
+  |
+  +-- yes
+        |
+        v
+validate header extract type
+        |
+        v
+daily UPDATE only:
+is publication timestamp fresh for requested weekday?
+        |
+        +-- stale + REQUIRE_FRESH_PUBLICATION=false
+        |     -> structured warning
+        |     -> no-op
+        |     -> exit 0
+        |
+        +-- stale + REQUIRE_FRESH_PUBLICATION=true
+        |     -> loud failure
+        |
+        +-- fresh
+              |
+              v
+FULL snapshot:
+skip freshness check
+              |
+              v
+derive canonical path from (type, sequence)
+              |
+              v
+does canonical GCS object exist?
+        |
+        +-- no
+        |     -> fresh transfer request
+        |     -> verify source metadata still matches probe
+        |     -> create-only upload
+        |     -> success
+        |
+        +-- yes
+              |
+              v
+compare persisted source provenance
+              |
+              +-- same
+              |     -> healthy no-op
+              |
+              +-- different
+                    -> fresh transfer request
+                    -> verify source metadata still matches probe
+                    -> stream observed artefact to quarantine
+                    -> loud failure
 ```
 
-The later backup run is expected to self-heal the situation.
+There is deliberately no canonical overwrite path.
 
-This warning is a candidate for a log-based alert because the event is important but the Cloud Run Job is deliberately healthy.
-
-### `REQUIRE_PUBLICATION=true`
-
-If the expected publication is still absent or stale:
+The condensed rule is:
 
 ```text
-emit ERROR
-exit non-zero
+new identity
+  -> upload new
+
+same identity + same provenance
+  -> no-op
+
+same identity + different provenance
+  -> quarantine + fail
+
+stale update
+  -> warn/no-op before deadline
+  -> fail after deadline
+
+invalid or inconsistent source
+  -> fail
 ```
 
-The existing blanket Cloud Run job-failure metric alert then fires. By this point the automatic recovery window has expired and manual intervention may be required later.
+## Full snapshot behaviour
+
+Full snapshots are deliberately simpler than daily updates.
+
+The endpoint's current valid full publication is accepted regardless of timestamp freshness.
+
+The ingest then applies the normal identity/provenance rules:
+
+```text
+new (full, sequence)
+  -> upload
+
+existing identity + matching provenance
+  -> no-op
+
+existing identity + differing provenance
+  -> quarantine + fail
+```
+
+A weekly invocation may therefore encounter the same full snapshot as the previous invocation and simply no-op.
+
+If a new full publication arrives after that run, it will be picked up by a later invocation.
+
+This is acceptable because the full feed is used as a backup and validation checkpoint rather than as the primary daily state-transition mechanism.
 
 ## Idempotency and concurrency
 
-The ingest treats `(type, sequence)` as immutable source identity.
+The ingest treats `(type, sequence)` as immutable logical source identity.
 
-If an object already exists at the derived path and its persisted source provenance matches the currently served artefact, the invocation exits successfully without uploading anything.
+If a canonical object already exists and its persisted source provenance matches the publication currently served upstream, the invocation exits successfully without uploading anything.
 
-This remains true even if `REQUIRE_PUBLICATION=false`. An unexpected duplicate invocation is not itself a data failure.
-
-The actual GCS write must also be create-only using a generation precondition equivalent to:
+The actual GCS write is create-only using a generation precondition equivalent to:
 
 ```text
 if_generation_match = 0
@@ -303,31 +506,74 @@ This protects against races where two Cloud Run executions both observe the obje
 If a writer loses that race:
 
 ```text
-reload the winning object
+reload winning object
 compare persisted provenance
 
 match
-  -> concurrent duplicate; successful no-op
+  -> concurrent duplicate
+  -> successful no-op
 
 mismatch
-  -> anomaly; fail loudly
+  -> anomaly
+  -> loud failure
 ```
+
+A precondition failure is not blindly retried as a transient error.
+
+## Source mutation and quarantine
+
+If the same `(type, sequence)` is observed with different physical source provenance:
+
+```text
+ETag
+Last-Modified
+Content-Length
+```
+
+the trusted canonical object is never overwritten.
+
+Instead:
+
+```text
+stream newly observed artefact to quarantine
+fail loudly
+```
+
+This preserves both versions for investigation.
+
+This behaviour protects against unexpected in-place mutation even though such mutation is expected to be unusual for a sequential delta feed.
+
+The source could in principle correct schedule state in a later delta rather than rewriting an earlier publication, but the ingest does not depend on that assumption for canonical immutability.
 
 ## Checksums
 
 The SCHEDULE ingest does not calculate an application-level CRC32C.
 
-Unlike CORPUS, SCHEDULES supplies an explicit sequence identity. For normal operation we therefore use source metadata and `(type, sequence)` for idempotency rather than downloading a duplicate artefact purely to compare hashes.
+For normal operation:
+
+```text
+(type, sequence)
+```
+
+provides logical identity, while:
+
+```text
+ETag
+Last-Modified
+Content-Length
+```
+
+provide source-object provenance.
 
 GCS performs its own upload integrity checking and stores object checksums server-side.
 
-If this source-immutability assumption proves false in practice, weekly full-snapshot reconciliation should reveal the drift and the ingest policy can be tightened later.
+The exact upstream gzip bytes are retained as raw evidence.
 
 ## Failure modes and responses
 
-### HTTP / network / authentication failure
+### Source/network failure
 
-Existing shared HTTP functionality handles configured retries for transient failures.
+Transient failures are retried according to the ingest's bounded retry policy.
 
 If retries are exhausted:
 
@@ -336,69 +582,92 @@ emit ERROR
 exit non-zero
 ```
 
-The existing Cloud Run failure metric alert fires.
+Authentication, permission, malformed-response and other non-transient failures fail immediately.
 
-### Publication not available yet
+### Stale daily update
 
-If the source has not yet published the expected artefact:
+The source is healthy and returns a valid update publication, but the requested weekday slot has not yet rolled forward into the accepted freshness window.
+
+Early run:
 
 ```text
-REQUIRE_PUBLICATION=false
+REQUIRE_FRESH_PUBLICATION=false
   -> structured WARNING
-  -> log-based alert
   -> exit 0
-
-REQUIRE_PUBLICATION=true
-  -> ERROR
-  -> exit non-zero
-  -> existing Cloud Run failure alert
 ```
 
-### Backup run finds a new artefact
-
-This is normal mop-up behaviour.
+Deadline run:
 
 ```text
-GCS object absent
--> upload normally
--> success
+REQUIRE_FRESH_PUBLICATION=true
+  -> ERROR
+  -> exit non-zero
+```
+
+This is the normal representation of a late Network Rail update.
+
+### No valid source publication
+
+Examples include:
+
+- source request fails permanently;
+- response is not a valid gzip stream;
+- stream ends before a valid first NDJSON record is obtained;
+- first line is not valid JSON;
+- required source metadata is absent or malformed.
+
+These are not interpreted as ordinary publication lateness.
+
+Response:
+
+```text
+emit ERROR
+exit non-zero
+```
+
+### New artefact
+
+If the canonical `(type, sequence)` object does not exist:
+
+```text
+make fresh source request
+verify source metadata against probe
+stream exact compressed bytes to create-only GCS object
+exit 0
 ```
 
 ### Artefact already ingested
 
-If `(type, sequence)` already exists and persisted provenance matches the current source object:
+If the canonical object exists and persisted provenance matches:
 
 ```text
 healthy no-op
 exit 0
 ```
 
-This is the normal backup-run outcome when the early run succeeded.
+This is normal for duplicate invocations and for a full-snapshot run where the source has not yet advanced.
 
 ### Same sequence, different source provenance
 
-If the source serves the same `(type, sequence)` but `ETag`, `Last-Modified`, or other persisted provenance differs:
+If the same `(type, sequence)` is served with different physical provenance:
 
 ```text
-stream incoming artefact to quarantine
-attach conflict metadata
+stream newly observed artefact to quarantine
 emit ERROR
 exit non-zero
 ```
 
-The trusted normal object is never overwritten automatically.
-
-This requires manual investigation because it violates the project's source-immutability assumption.
+The canonical object is never overwritten automatically.
 
 ### Malformed or unexpected timetable header
 
 Examples:
 
-- gzip cannot be partially decompressed;
-- first line is not valid JSON;
 - `JsonTimetableV1` is missing;
-- `Metadata.type` is missing or does not match `FULL_SNAPSHOT`;
-- `Metadata.sequence` is missing or invalid.
+- `Metadata.type` is missing or invalid;
+- `Metadata.sequence` is missing or invalid;
+- timestamp is missing or invalid;
+- header extract type does not match the requested feed family.
 
 Response:
 
@@ -412,62 +681,102 @@ exit non-zero
 
 Uploads and quarantines make a fresh source request after the initial probe.
 
-Before streaming begins, the fresh response metadata must match the metadata observed during the probe. If it differs, the decision made from the probe is stale and the transfer must not proceed.
+Before streaming begins:
 
 ```text
-fresh source metadata differs from probe
-  -> do not land or quarantine the new response
-  -> fail loudly
-  -> later invocation starts again from a fresh probe
+fresh response provenance
 ```
 
-This condition is distinct from a provenance conflict with an already-landed canonical object. Quarantine is used for the latter, not for a source artefact which changes during a single invocation.
+must equal:
+
+```text
+probe response provenance
+```
+
+If it differs:
+
+```text
+do not land the changed response
+do not quarantine it as the earlier conflict
+fail loudly
+```
+
+A later invocation begins again from a new probe.
+
+This condition is distinct from discovering that an already-landed canonical object has different provenance.
 
 ### Streaming or GCS upload failure
 
 Uploads and quarantines allow up to three complete transfer attempts for transient source-network or GCS failures.
 
-Each transfer attempt starts from scratch:
+Each attempt begins from scratch:
 
 ```text
 open fresh source request
-  -> verify source metadata still matches the probe
+  -> verify metadata still matches probe
   -> open fresh create-only GCS upload
   -> stream compressed bytes from byte zero
 ```
 
-If a transient failure occurs while reading the source stream or writing to GCS, the current transfer attempt is abandoned. A retry opens both a new source response and a new GCS upload session and begins again from byte zero.
+If a transient failure occurs midway through reading or writing:
 
-The ingest does not attempt application-level byte-range resume or splice a restarted source response into a partially completed GCS upload.
+```text
+abandon attempt
+start new HTTP request
+start new GCS upload session
+restart from byte zero
+```
 
-Only transient failures are retried. Errors which invalidate the assumptions of the operation fail immediately, including:
+The ingest does not perform application-level byte-range resume.
+
+Only transient failures are retried.
+
+Errors which invalidate the assumptions of the operation fail immediately, including:
 
 - authentication or permission failures;
 - malformed source responses;
 - missing required source metadata;
-- probe-to-transfer source metadata mismatch;
+- probe-to-transfer metadata mismatch;
 - conflicting provenance after losing a concurrent create race.
 
-If all three transfer attempts fail transiently:
+After three failed whole-transfer attempts:
 
 ```text
 emit ERROR
 exit non-zero
 ```
 
-The Cloud Run Job itself is not relied upon for routine transient retries. A later scheduled or manual invocation remains safe because normal writes are create-only and the ingest is idempotent.
+The Cloud Run Job itself is not relied upon for routine transient retries.
+
+A later scheduled or manual invocation remains safe because canonical writes are create-only and the ingest is idempotent.
 
 ### Concurrent duplicate writers
 
-Two executions may race after both observe the object as absent.
+Two executions may race after both observe the canonical object as absent.
 
-The GCS generation precondition allows only one create to succeed. The loser reloads the winner and compares provenance.
+The GCS generation precondition allows only one create to succeed.
 
-Matching provenance becomes a successful no-op; differing provenance becomes a loud failure.
+The loser reloads the winner:
 
-### Missing sequence in downstream replay
+```text
+matching provenance
+  -> successful no-op
 
-Raw landing should preserve whatever artefacts Network Rail publishes, but downstream state reconstruction must not silently bridge sequence gaps.
+different provenance
+  -> loud failure
+```
+
+## Sequence continuity
+
+Sequence numbers provide the logical ordering of SCHEDULE publications and are retained as first-class metadata.
+
+The raw ingest does not currently require the next update sequence to equal the previous stored sequence plus one.
+
+That is deliberate.
+
+The weekday endpoint is not directly addressable by arbitrary historical sequence, and periodic full snapshots provide eventual recovery checkpoints. A missed delta may therefore create a temporary gap without making permanent current-state recovery impossible.
+
+Downstream replay must nevertheless not silently bridge such a gap.
 
 For example:
 
@@ -476,35 +785,46 @@ For example:
 5248
 ```
 
-must not be treated as a valid replay chain without `5247`.
+must not be interpreted as a complete delta chain containing `5247`.
 
-Sequence-continuity validation belongs to the BigQuery/Dataform state-reconstruction layer rather than the raw ingest itself.
+Sequence-continuity validation belongs to the BigQuery/Dataform reconstruction layer, where full snapshots and updates can be evaluated together.
 
 ## Monitoring model
 
-Two alerting mechanisms are intentionally used for different semantics.
+Two alerting mechanisms are used for different semantics.
 
 ### Log-based alert
 
-Used for the rare event:
+Used when an early daily-update run finds that the weekday slot is still stale:
 
 ```text
-early run could not obtain the expected publication
+event = schedule_publication_stale
 ```
 
-The application emits a structured warning event and exits successfully because a later retry is expected to recover automatically.
+Useful structured fields include:
+
+```text
+extract_type
+update_day
+sequence
+timestamp
+```
+
+The application exits successfully because the later deadline invocation is expected to retry.
 
 ### Cloud Run failure metric alert
 
-Used for conditions which require intervention or indicate an unhealthy execution, including:
+Used for conditions indicating an unhealthy or deadline-missed execution, including:
 
-- exhausted HTTP retries;
-- required publication still missing at the deadline run;
-- malformed source header;
-- quarantine conflict;
-- failed upload.
+- stale update at the mandatory run;
+- exhausted transient retries;
+- authentication or permission failure;
+- malformed source/header;
+- source mutation conflict;
+- probe-to-transfer mutation;
+- failed upload or quarantine.
 
-This keeps warning-level source lateness distinct from actual job failure.
+This keeps expected temporary source lateness distinct from actual job failure.
 
 ## Full snapshots and recovery
 
@@ -515,7 +835,9 @@ Weekly full snapshots serve two purposes:
 1. **checkpoint** — downstream replay can begin from a recent full state rather than an arbitrarily old baseline;
 2. **validation** — reconstructed state can be compared with Network Rail's own full snapshot at the same sequence.
 
-If reconstruction diverges from the full snapshot, investigate whether the cause is:
+They also give the project eventual recovery from missing historical deltas which are no longer available through the weekday-slot interface.
+
+If reconstructed state diverges from a trusted full snapshot, investigate whether the cause is:
 
 - a missed or misordered delta;
 - incorrect replay logic;
@@ -531,8 +853,11 @@ The raw SCHEDULE ingest does not:
 - parse individual schedules, associations or TIPLOC records beyond the first header row;
 - apply `Create`, `Delete` or `Update` transactions;
 - maintain current timetable state;
+- maintain a mutable "latest sequence" pointer;
+- provide arbitrary historical retrieval by sequence number;
+- require update sequences to be contiguous at raw-ingest time;
 - validate schedule business semantics;
 - decompress and persist the 3+ GiB NDJSON representation;
 - calculate application-level checksums.
 
-Those concerns belong to downstream BigQuery/Dataform processing.
+Those concerns belong downstream or are deliberately avoided to keep the raw ingest simple, restartable and predominantly stateless.
