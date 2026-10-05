@@ -307,6 +307,10 @@ def fetch_and_upload_schedule(
         )
         return
 
+    logger.info(
+        "Published SCHEDULE metadata does not match existing object. Quarantining published file"
+    )
+
     quarantine_schedule(
         schedule_request,
         quarantine_object_name(

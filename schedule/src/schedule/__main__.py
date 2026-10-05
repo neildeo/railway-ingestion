@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from functools import partial
@@ -14,6 +15,10 @@ from schedule.core import (
 )
 
 from schedule import adapters
+
+from schedule.logging_config import configure_logging
+
+logger = logging.getLogger(__name__)
 
 PROJECT_ID = "railway-analytics-508615"
 
@@ -89,6 +94,8 @@ def resolve_schedule_request(
 
 def main() -> None:
     """Runtime/configuration boundary."""
+    configure_logging()
+
     full_snapshot = parse_bool_env("FULL_SNAPSHOT")
     require_fresh_publication = parse_bool_env(
         "REQUIRE_FRESH_PUBLICATION"
@@ -101,6 +108,15 @@ def main() -> None:
         full_snapshot=full_snapshot,
         update_day=update_day,
         now=now,
+    )
+
+    logger.info(
+        "Starting SCHEDULE ingestion",
+        extra={
+            "event": "schedule_ingest_started",
+            "schedule_request": repr(schedule_request),
+            "require_fresh_publication": require_fresh_publication,
+        },
     )
 
     credentials = (
@@ -131,6 +147,14 @@ def main() -> None:
             session=session,
         ),
         utc_now=lambda: now,
+    )
+
+    logger.info(
+        "SCHEDULE ingestion completed successfully",
+        extra={
+            "event": "schedule_ingest_completed",
+            "schedule_request": repr(schedule_request),
+        },
     )
 
 
