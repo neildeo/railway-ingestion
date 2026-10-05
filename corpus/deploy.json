@@ -1,6 +1,6 @@
 {
   "image_name": "railway-ingest-corpus",
-  "cloud_run_job": "railway-ingest-corpus",
+  "cloud_run_jobs": ["railway-ingest-corpus"],
   "region": "europe-west1",
   "depends_on": []
 }
