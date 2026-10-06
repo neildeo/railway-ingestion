@@ -294,30 +294,77 @@ def fetch_and_upload_schedule(
     object_state = get_object_state(name)
 
     if object_state is None:
+        logger.info(
+            "No existing SCHEDULE object found; uploading publication",
+            extra={
+                "event": "schedule_upload_started",
+                "extract_type": pub_info.header.extract_type.value,
+                "sequence": pub_info.header.sequence,
+                "object_name": name,
+            },
+        )
+
         upload_schedule(
             schedule_request,
             name,
             pub_info,
         )
+
+        logger.info(
+            "SCHEDULE publication uploaded successfully",
+            extra={
+                "event": "schedule_upload_completed",
+                "extract_type": pub_info.header.extract_type.value,
+                "sequence": pub_info.header.sequence,
+                "object_name": name,
+            },
+        )
+
         return
 
     if object_state.source_metadata == pub_info.source_metadata:
         logger.info(
-            "Published SCHEDULE metadata matches existing object. Exiting..."
+            "SCHEDULE publication already exists with matching provenance",
+            extra={
+                "event": "schedule_publication_already_present",
+                "extract_type": pub_info.header.extract_type.value,
+                "sequence": pub_info.header.sequence,
+                "object_name": name,
+            },
         )
         return
 
-    logger.info(
-        "Published SCHEDULE metadata does not match existing object. Quarantining published file"
+    logger.warning(
+        "Existing SCHEDULE object has conflicting source provenance; "
+        "quarantining publication",
+        extra={
+            "event": "schedule_source_conflict",
+            "extract_type": pub_info.header.extract_type.value,
+            "sequence": pub_info.header.sequence,
+            "object_name": name,
+        },
+    )
+
+    quarantine_name = quarantine_object_name(
+        schedule_request,
+        pub_info.header.sequence,
+        now,
     )
 
     quarantine_schedule(
         schedule_request,
-        quarantine_object_name(
-            schedule_request,
-            pub_info.header.sequence,
-            now,
-        ),
+        quarantine_name,
         pub_info,
     )
+
+    logger.warning(
+        "Conflicting SCHEDULE publication quarantined",
+        extra={
+            "event": "schedule_publication_quarantined",
+            "extract_type": pub_info.header.extract_type.value,
+            "sequence": pub_info.header.sequence,
+            "quarantine_object_name": quarantine_name,
+        },
+    )
+
     raise SourceMutationError

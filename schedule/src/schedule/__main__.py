@@ -130,24 +130,35 @@ def main() -> None:
         credentials
     )
 
-    fetch_and_upload_schedule(
-        schedule_request=schedule_request,
-        require_fresh_publication=require_fresh_publication,
-        fetch_header_row=partial(
-            adapters.fetch_header_row,
-            session=session,
-        ),
-        get_object_state=adapters.get_object_state,
-        upload_schedule=partial(
-            adapters.upload_schedule,
-            session=session,
-        ),
-        quarantine_schedule=partial(
-            adapters.quarantine_schedule,
-            session=session,
-        ),
-        utc_now=lambda: now,
-    )
+    try:
+        fetch_and_upload_schedule(
+            schedule_request=schedule_request,
+            require_fresh_publication=require_fresh_publication,
+            fetch_header_row=partial(
+                adapters.fetch_header_row,
+                session=session,
+            ),
+            get_object_state=adapters.get_object_state,
+            upload_schedule=partial(
+                adapters.upload_schedule,
+                session=session,
+            ),
+            quarantine_schedule=partial(
+                adapters.quarantine_schedule,
+                session=session,
+            ),
+            utc_now=lambda: now,
+        )
+
+    except Exception:
+        logger.exception(
+            "SCHEDULE ingestion failed",
+            extra={
+                "event": "schedule_ingest_failed",
+                "schedule_request": repr(schedule_request),
+            },
+        )
+        raise
 
     logger.info(
         "SCHEDULE ingestion completed successfully",
