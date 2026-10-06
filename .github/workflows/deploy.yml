@@ -70,7 +70,12 @@ jobs:
 
             jq -e '
               (.image_name | type == "string" and length > 0) and
-              (.cloud_run_job | type == "string" and length > 0) and
+              (
+                .cloud_run_jobs
+                | type == "array"
+                and length > 0
+                and all(.[]; type == "string" and length > 0)
+              ) and
               (.region | type == "string" and length > 0) and
               (
                 .depends_on
@@ -80,7 +85,7 @@ jobs:
             ' "$manifest" > /dev/null
 
             image_name="$(jq -r '.image_name' "$manifest")"
-            cloud_run_job="$(jq -r '.cloud_run_job' "$manifest")"
+            cloud_run_jobs="$(jq -c '.cloud_run_jobs' "$manifest")"
             region="$(jq -r '.region' "$manifest")"
 
             affected="$all_roots"
@@ -118,12 +123,12 @@ jobs:
                 jq -c \
                   --arg root "$root" \
                   --arg image_name "$image_name" \
-                  --arg cloud_run_job "$cloud_run_job" \
+                  --argjson cloud_run_jobs "$cloud_run_jobs" \
                   --arg region "$region" \
                   '. + [{
                     root: $root,
                     image_name: $image_name,
-                    cloud_run_job: $cloud_run_job,
+                    cloud_run_jobs: $cloud_run_jobs,
                     region: $region
                   }]' \
                   <<< "$matrix"
@@ -211,18 +216,29 @@ jobs:
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           echo "Resolved image: ${IMAGE_URI}@${digest}"
 
-      - name: Deploy image to Cloud Run Job
+      - name: Deploy image to Cloud Run Jobs
         env:
           IMAGE_URI: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ matrix.image_name }}
           DIGEST: ${{ steps.image.outputs.digest }}
-          CLOUD_RUN_JOB: ${{ matrix.cloud_run_job }}
+          CLOUD_RUN_JOBS: ${{ toJSON(matrix.cloud_run_jobs) }}
           REGION: ${{ matrix.region }}
+        shell: bash
         run: |
-          gcloud run jobs update "$CLOUD_RUN_JOB" \
-            --project="$PROJECT_ID" \
-            --region="$REGION" \
-            --image="${IMAGE_URI}@${DIGEST}" \
-            --quiet
+          set -euo pipefail
+
+          mapfile -t jobs < <(
+            jq -r '.[]' <<< "$CLOUD_RUN_JOBS"
+          )
+
+          for job in "${jobs[@]}"; do
+            echo "Deploying ${IMAGE_URI}@${DIGEST} to Cloud Run Job: ${job}"
+
+            gcloud run jobs update "$job" \
+              --project="$PROJECT_ID" \
+              --region="$REGION" \
+              --image="${IMAGE_URI}@${DIGEST}" \
+              --quiet
+          done
 
   cd:
     name: CD
