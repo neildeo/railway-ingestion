@@ -1,0 +1,68 @@
+[
+  {
+    "name": "source_object",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "GCS object path containing the source SCHEDULE publication."
+  },
+  {
+    "name": "source_generation",
+    "type": "INTEGER",
+    "mode": "REQUIRED",
+    "description": "GCS generation identifying the exact physical version of the source object."
+  },
+  {
+    "name": "publication_sequence",
+    "type": "INTEGER",
+    "mode": "REQUIRED",
+    "description": "Network Rail publication sequence number used to identify and order SCHEDULE publications."
+  },
+  {
+    "name": "extract_type",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "SCHEDULE extract type from the publication metadata; expected values are 'full' or 'update'."
+  },
+  {
+    "name": "transaction_type",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Source transaction type for the TIPLOC record; expected values are 'Create', 'Update' or 'Delete'. Full extracts are expected to contain only 'Create' records."
+  },
+  {
+    "name": "tiploc_code",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "TIPLOC code identifying the timing point location."
+  },
+  {
+    "name": "tps_description",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Timing Point System description of the location."
+  },
+  {
+    "name": "description",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Short description of the location. Not populated for every TIPLOC."
+  },
+  {
+    "name": "crs_code",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "CRS (3-alpha) code for the location. Not all timing points have a CRS code."
+  },
+  {
+    "name": "stanox",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "STANOX (station number) used by operational railway systems. Not all TIPLOCs have a STANOX."
+  },
+  {
+    "name": "nalco",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "NLC (National Location Code) associated with the TIPLOC."
+  }
+]

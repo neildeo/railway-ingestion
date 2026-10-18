@@ -1,0 +1,104 @@
+[
+  {
+    "name": "source_object",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "GCS object path containing the source SCHEDULE publication."
+  },
+  {
+    "name": "source_generation",
+    "type": "INTEGER",
+    "mode": "REQUIRED",
+    "description": "GCS generation identifying the exact physical version of the source object."
+  },
+  {
+    "name": "publication_sequence",
+    "type": "INTEGER",
+    "mode": "REQUIRED",
+    "description": "Network Rail publication sequence number used to identify and order SCHEDULE publications."
+  },
+  {
+    "name": "extract_type",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "SCHEDULE extract type from the publication metadata; expected values are 'full' or 'update'."
+  },
+  {
+    "name": "transaction_type",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Source transaction type for the association record; expected values are 'Create' or 'Delete'. Full extracts are expected to contain only 'Create' records."
+  },
+  {
+    "name": "CIF_stp_indicator",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Short-term planning indicator for the association: `C` cancellation, `N` new STP association, `O` overlay, or `P` permanent."
+  },
+  {
+    "name": "assoc_start_date",
+    "type": "DATE",
+    "mode": "REQUIRED",
+    "description": "First date on which the association applies. Present on both 'Create' and 'Delete' records."
+  },
+  {
+    "name": "assoc_train_uid",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "UID of the associated scheduled service. In this dataset, 'train' refers to a scheduled service rather than a physical rolling-stock asset."
+  },
+  {
+    "name": "base_location_suffix",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Suffix which, together with location, identifies the relevant event on the main/base schedule when the TIPLOC occurs more than once. Present in both 'Create' and 'Delete' shapes but commonly null."
+  },
+  {
+    "name": "diagram_type",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Association diagram type. The published SCHEDULE feed uses the constant value `T`."
+  },
+  {
+    "name": "location",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "TIPLOC code of the location at which the association applies."
+  },
+  {
+    "name": "main_train_uid",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "UID of the main/base scheduled service in the association. In this dataset, 'train' refers to a scheduled service rather than a physical rolling-stock asset."
+  },
+  {
+    "name": "assoc_days",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Seven-character Monday-to-Sunday running-day mask for the association, where `1` means the association applies on that day. Present on 'Create' records and omitted on 'Delete' records."
+  },
+  {
+    "name": "assoc_end_date",
+    "type": "DATE",
+    "mode": "NULLABLE",
+    "description": "Last date on which the association applies. Present on 'Create' records and omitted on 'Delete' records."
+  },
+  {
+    "name": "assoc_location_suffix",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Suffix which, together with location, identifies the relevant event on the associated schedule when the TIPLOC occurs more than once. Present on 'Create' records, omitted on 'Delete' records, and commonly null."
+  },
+  {
+    "name": "category",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Association category code, including values such as `JJ`, `VV` and `NP`. Present on 'Create' records and omitted on 'Delete' records."
+  },
+  {
+    "name": "date_indicator",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Date relationship between the associated schedules, including `S` same day, `N` next day and `P` previous day. Present on 'Create' records and omitted on 'Delete' records."
+  }
+]
