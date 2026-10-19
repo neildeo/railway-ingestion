@@ -1,5 +1,11 @@
 [
   {
+    "name": "load_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Sortable identifier for one physical load attempt. Generated at load start from the UTC load timestamp plus a short cryptographically random suffix, so later load attempts sort after earlier ones."
+  },
+  {
     "name": "source_object",
     "type": "STRING",
     "mode": "REQUIRED",
