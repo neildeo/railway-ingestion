@@ -4,7 +4,6 @@ from collections.abc import Sequence
 from pathlib import Path
 import json
 
-import pyarrow as pa
 from google.cloud import bigquery
 
 

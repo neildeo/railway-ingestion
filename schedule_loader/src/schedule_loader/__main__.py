@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import secrets
 
 from schedule_loader.schema import load_bigquery_schema, assert_schemas_equal
-from schedule_loader.arrow import bigquery_to_arrow_schema, batch_rows_as_arrow
+from schedule_loader.arrow import batch_rows_as_arrow
 from schedule_loader.source import read_schedule_header
 from schedule_loader.row import LoadContext, attach_load_context, publication_row
 from schedule_loader.writer import write_pending_batch
