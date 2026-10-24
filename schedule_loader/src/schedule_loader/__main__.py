@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 import pyarrow as pa
 import secrets
 
-from schedule_loader.schema import load_bigquery_schema, assert_schemas_equal, bigquery_to_arrow_schema
+from schedule_loader.schema import load_bigquery_schema, assert_schemas_equal
+from schedule_loader.arrow import bigquery_to_arrow_schema, batch_rows_as_arrow
 from schedule_loader.source import read_schedule_header
 from schedule_loader.row import LoadContext, attach_load_context, publication_row
 from schedule_loader.writer import write_pending_batch
@@ -73,10 +74,9 @@ def load_schedule_publication(
 
     # Prepare RecordBatch for BQ write
     # Already confirmed the local schema matches the landing table
-    arrow_schema = bigquery_to_arrow_schema(local_schema)
-    batch = pa.RecordBatch.from_pylist(
+    batch = batch_rows_as_arrow(
         [row],
-        schema=arrow_schema,
+        bq_schema=local_schema,
     )
 
     # Write to BQ
