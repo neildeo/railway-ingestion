@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
+import json
 
 import pyarrow as pa
 from google.cloud import bigquery
@@ -14,7 +15,13 @@ class SchemaMismatchError(ValueError):
 def load_bigquery_schema(
     path: str | Path,
 ) -> tuple[bigquery.SchemaField, ...]:
-    raise NotImplementedError
+    with Path(path).open(
+        "r",
+        encoding="utf-8",
+    ) as file:
+        json_schema: list[dict] = json.load(file)
+
+    return tuple(bigquery.SchemaField.from_api_repr(f) for f in json_schema)
 
 
 def assert_schemas_equal(
@@ -106,7 +113,50 @@ def _compare_field(
 def _bigquery_to_arrow_field(
     field: bigquery.SchemaField,
 ) -> pa.Field:
-    raise NotImplementedError(
-        "BigQuery to Arrow field conversion "
-        "has not been implemented yet"
+    return pa.field(
+        field.name,
+        type=_bigquery_to_arrow_type(field),
+        nullable=True,
     )
+
+
+def _bigquery_to_arrow_type(
+    bq_field: bigquery.SchemaField,
+) -> pa.DataType:
+    match bq_field.field_type:
+        case "STRING":
+            arrow_type = pa.string()
+
+        case "INTEGER" | "INT64":
+            arrow_type = pa.int64()
+
+        case "BOOLEAN" | "BOOL":
+            arrow_type = pa.bool_()
+
+        case "DATE":
+            arrow_type = pa.date32()
+
+        case "TIMESTAMP":
+            arrow_type = pa.timestamp(
+                "us",
+                tz="UTC",
+            )
+
+        case "RECORD" | "STRUCT":
+            arrow_type = pa.struct(
+                [
+                    _bigquery_to_arrow_field(field)
+                    for field in bq_field.fields
+                ]
+            )
+
+        case _:
+            raise NotImplementedError(
+                "PyArrow conversion not supported "
+                f"for BigQuery type: {bq_field.field_type}"
+            )
+
+    if bq_field.mode == "REPEATED":
+        return pa.list_(arrow_type)
+
+    return arrow_type
