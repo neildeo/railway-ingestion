@@ -17,7 +17,7 @@ def load_schedule_publication(
     storage_client: storage.Client,
     bigquery_client: bigquery.Client,
     write_client: bigquery_storage_v1.BigQueryWriteClient,
-) -> None:
+) -> str:
     bigquery_table_id = (
         f"{config.project}."
         f"{config.dataset}."
@@ -72,6 +72,8 @@ def load_schedule_publication(
         table=storage_write_table,
         batch=batch,
     )
+
+    return load_context.load_id
 
 
 def generate_load_id() -> str:
