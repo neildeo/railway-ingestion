@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from google.cloud import bigquery, bigquery_storage_v1, storage
 from datetime import datetime, timezone
-import pyarrow as pa
 import secrets
 
 from schedule_loader.schema import load_bigquery_schema, assert_schemas_equal
