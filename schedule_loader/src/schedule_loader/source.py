@@ -1,10 +1,29 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterator
+from enum import StrEnum
 
 from google.cloud import storage
 import gzip
 import json
+
+
+class RecordType(StrEnum):
+    PUBLICATION = "JsonTimetableV1"
+    TIPLOC = "TiplocV1"
+    ASSOCIATION = "AssociationV1"
+    SCHEDULE = "JsonScheduleV1"
+
+
+def iter_schedule_records(
+    *,
+    client: storage.Client,
+    bucket_name: str,
+    object_name: str,
+    generation: int,
+    record_type: RecordType,
+) -> Iterator[dict[str, Any]]:
+    raise NotImplementedError
 
 
 def read_schedule_header(
