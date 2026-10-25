@@ -196,7 +196,7 @@ def test_read_schedule_metadata_requires_expected_fields(
     )
 
     with pytest.raises(
-        (KeyError, TypeError),
+        ValueError,
     ):
         read_schedule_metadata(
             client=client,  # pyright: ignore[reportArgumentType]

@@ -11,7 +11,10 @@ import schedule_loader.__main__ as loader_main
 from schedule_loader.__main__ import load_schedule
 from schedule_loader.config import LoadConfig
 from schedule_loader.schema import SchemaMismatchError
-from schedule_loader.source import RecordType
+from schedule_loader.source import (
+    RecordType,
+    SourceMetadata,
+)
 
 
 LOCAL_SCHEMA = (
@@ -89,6 +92,12 @@ HEADER = {
 }
 
 
+SOURCE_METADATA = SourceMetadata(
+    publication_sequence=5251,
+    extract_type="full",
+)
+
+
 def _config() -> LoadConfig:
     return LoadConfig(
         source_bucket="railway-raw",
@@ -140,6 +149,12 @@ def test_load_schedule_writes_publication_row(
         loader_main,
         "load_bigquery_schema",
         lambda path: LOCAL_SCHEMA,
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "read_schedule_metadata",
+        lambda **kwargs: SOURCE_METADATA,
     )
 
     monkeypatch.setattr(
@@ -220,6 +235,68 @@ def test_load_schedule_writes_publication_row(
     assert row["owner"] == "Network Rail"
 
 
+def test_load_schedule_reads_exact_source_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config()
+
+    storage_client = object()
+    write_client = object()
+    bigquery_client = FakeBigQueryClient(
+        LOCAL_SCHEMA,
+    )
+
+    metadata_call: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        loader_main,
+        "load_bigquery_schema",
+        lambda path: LOCAL_SCHEMA,
+    )
+
+    def fake_read_schedule_metadata(**kwargs):
+        metadata_call.update(kwargs)
+        return SOURCE_METADATA
+
+    monkeypatch.setattr(
+        loader_main,
+        "read_schedule_metadata",
+        fake_read_schedule_metadata,
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "iter_schedule_records",
+        lambda **kwargs: iter([HEADER]),
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "generate_load_id",
+        lambda: "load-1",
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "write_pending_batch",
+        lambda **kwargs: None,
+    )
+
+    load_schedule(
+        config=config,
+        storage_client=storage_client,  # pyright: ignore[reportArgumentType]
+        bigquery_client=bigquery_client,  # pyright: ignore[reportArgumentType]
+        write_client=write_client,  # pyright: ignore[reportArgumentType]
+    )
+
+    assert metadata_call == {
+        "client": storage_client,
+        "bucket_name": config.source_bucket,
+        "object_name": config.source_object,
+        "generation": config.source_generation,
+    }
+
+
 def test_load_schedule_requests_configured_record_type(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -237,6 +314,12 @@ def test_load_schedule_requests_configured_record_type(
         loader_main,
         "load_bigquery_schema",
         lambda path: LOCAL_SCHEMA,
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "read_schedule_metadata",
+        lambda **kwargs: SOURCE_METADATA,
     )
 
     def fake_iter_schedule_records(**kwargs):
@@ -277,7 +360,7 @@ def test_load_schedule_requests_configured_record_type(
     }
 
 
-def test_load_schedule_uses_publication_identity(
+def test_load_schedule_uses_source_metadata_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config()
@@ -287,14 +370,6 @@ def test_load_schedule_uses_publication_identity(
     bigquery_client = FakeBigQueryClient(
         LOCAL_SCHEMA,
     )
-
-    header = {
-        **HEADER,
-        "Metadata": {
-            "sequence": 7777,
-            "type": "update",
-        },
-    }
 
     written_batch: pa.RecordBatch | None = None
 
@@ -306,8 +381,20 @@ def test_load_schedule_uses_publication_identity(
 
     monkeypatch.setattr(
         loader_main,
+        "read_schedule_metadata",
+        lambda **kwargs: SourceMetadata(
+            publication_sequence=7777,
+            extract_type="update",
+        ),
+    )
+
+    # Deliberately leave contradictory values in the
+    # publication record to prove LoadContext comes from
+    # GCS object metadata instead.
+    monkeypatch.setattr(
+        loader_main,
         "iter_schedule_records",
-        lambda **kwargs: iter([header]),
+        lambda **kwargs: iter([HEADER]),
     )
 
     monkeypatch.setattr(
@@ -366,7 +453,8 @@ def test_load_schedule_validates_schema_before_reading_source(
         remote_schema,
     )
 
-    source_was_read = False
+    metadata_was_read = False
+    records_were_read = False
     writer_was_called = False
 
     monkeypatch.setattr(
@@ -375,9 +463,20 @@ def test_load_schedule_validates_schema_before_reading_source(
         lambda path: LOCAL_SCHEMA,
     )
 
+    def fake_read_schedule_metadata(**kwargs):
+        nonlocal metadata_was_read
+        metadata_was_read = True
+        return SOURCE_METADATA
+
+    monkeypatch.setattr(
+        loader_main,
+        "read_schedule_metadata",
+        fake_read_schedule_metadata,
+    )
+
     def fake_iter_schedule_records(**kwargs):
-        nonlocal source_was_read
-        source_was_read = True
+        nonlocal records_were_read
+        records_were_read = True
         return iter([HEADER])
 
     monkeypatch.setattr(
@@ -404,5 +503,6 @@ def test_load_schedule_validates_schema_before_reading_source(
             write_client=write_client,  # pyright: ignore[reportArgumentType]
         )
 
-    assert not source_was_read
+    assert not metadata_was_read
+    assert not records_were_read
     assert not writer_was_called
