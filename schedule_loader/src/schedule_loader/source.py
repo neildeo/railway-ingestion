@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Iterator
 from enum import StrEnum
+from dataclasses import dataclass
 
 from google.cloud import storage
 import gzip
@@ -13,6 +14,22 @@ class RecordType(StrEnum):
     TIPLOC = "TiplocV1"
     ASSOCIATION = "AssociationV1"
     SCHEDULE = "JsonScheduleV1"
+
+
+@dataclass(frozen=True)
+class SourceMetadata:
+    publication_sequence: int
+    extract_type: str
+
+
+def read_schedule_metadata(
+    *,
+    client: storage.Client,
+    bucket_name: str,
+    object_name: str,
+    generation: int,
+) -> SourceMetadata:
+    raise NotImplementedError
 
 
 def iter_schedule_records(
