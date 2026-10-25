@@ -1,5 +1,6 @@
 import pyarrow as pa
-from typing import Sequence, Any
+from typing import Sequence, Any, Iterator, Iterable
+from itertools import batched
 from google.cloud import bigquery
 
 
@@ -12,6 +13,24 @@ def bigquery_to_arrow_schema(
             for field in schema
         ]
     )
+
+
+def iter_rows_as_arrow_batches(
+    rows: Iterable[dict[str, Any]],
+    *,
+    bq_schema: Sequence[bigquery.SchemaField],
+    batch_size: int | None,
+) -> Iterator[pa.RecordBatch]:
+    arrow_schema = bigquery_to_arrow_schema(bq_schema)
+
+    if batch_size:
+        for batch in batched(rows, batch_size):
+            yield pa.RecordBatch.from_pylist(
+                list(batch),
+                schema=arrow_schema
+            )
+    else:
+        yield pa.RecordBatch.from_pylist(list(rows), schema=arrow_schema)
 
 
 def batch_rows_as_arrow(rows: list[dict[str, Any]], bq_schema: Sequence[bigquery.SchemaField]) -> pa.RecordBatch:
