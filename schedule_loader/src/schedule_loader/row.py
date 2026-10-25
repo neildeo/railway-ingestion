@@ -55,3 +55,24 @@ def publication_row(
         "classification": header["classification"],
         "owner": header["owner"],
     }
+
+
+def tiploc_row(
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Convert TiplocV1 source data into fields specific
+    to raw.schedule_tiplocs.
+
+    Common load/provenance fields are attached separately with
+    attach_load_context().
+    """
+    return {
+        "transaction_type": record["transaction_type"],
+        "tiploc_code": record["tiploc_code"],
+        "tps_description": record["tps_description"],
+        "description": record.get("description"),
+        "crs_code": record.get("crs_code"),
+        "stanox": record.get("stanox"),
+        "nalco": record["nalco"],
+    }

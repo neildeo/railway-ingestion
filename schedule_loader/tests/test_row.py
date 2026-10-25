@@ -6,6 +6,7 @@ from schedule_loader.row import (
     LoadContext,
     attach_load_context,
     publication_row,
+    tiploc_row,
 )
 
 
@@ -37,6 +38,51 @@ def test_publication_row_contains_only_record_specific_fields() -> None:
         "sender_organisation": "Rockshore",
         "classification": "public",
         "owner": "Network Rail",
+    }
+
+
+def test_tiploc_row_maps_required_fields() -> None:
+    record = {
+        "transaction_type": "Create",
+        "tiploc_code": "PADTON",
+        "tps_description": "LONDON PADDINGTON",
+        "nalco": "308700",
+    }
+
+    result = tiploc_row(record)
+
+    assert result == {
+        "transaction_type": "Create",
+        "tiploc_code": "PADTON",
+        "tps_description": "LONDON PADDINGTON",
+        "description": None,
+        "crs_code": None,
+        "stanox": None,
+        "nalco": "308700",
+    }
+
+
+def test_tiploc_row_preserves_optional_fields() -> None:
+    record = {
+        "transaction_type": "Create",
+        "tiploc_code": "PADTON",
+        "tps_description": "LONDON PADDINGTON",
+        "description": "PADDINGTON",
+        "crs_code": "PAD",
+        "stanox": "33057",
+        "nalco": "308700",
+    }
+
+    result = tiploc_row(record)
+
+    assert result == {
+        "transaction_type": "Create",
+        "tiploc_code": "PADTON",
+        "tps_description": "LONDON PADDINGTON",
+        "description": "PADDINGTON",
+        "crs_code": "PAD",
+        "stanox": "33057",
+        "nalco": "308700",
     }
 
 
