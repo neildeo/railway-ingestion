@@ -6,7 +6,7 @@ import secrets
 from schedule_loader.config import LoadConfig
 from schedule_loader.schema import load_bigquery_schema, assert_schemas_equal
 from schedule_loader.arrow import batch_rows_as_arrow
-from schedule_loader.source import read_schedule_header
+from schedule_loader.source import read_schedule_metadata, iter_schedule_records
 from schedule_loader.row import LoadContext, attach_load_context, publication_row
 from schedule_loader.writer import write_pending_batch
 
@@ -36,12 +36,21 @@ def load_schedule(
 
     assert_schemas_equal(expected=local_schema, actual=remote_schema)
 
-    # Get header
-    publication_header = read_schedule_header(
+    # Get object metadata
+    metadata = read_schedule_metadata(
         client=storage_client,
         bucket_name=config.source_bucket,
         object_name=config.source_object,
         generation=config.source_generation,
+    )
+
+    # Get header
+    publication_header = iter_schedule_records(
+        client=storage_client,
+        bucket_name=config.source_bucket,
+        object_name=config.source_object,
+        generation=config.source_generation,
+        record_type=config.record_type,
     )
 
     # Generate load context
@@ -49,13 +58,13 @@ def load_schedule(
         load_id=generate_load_id(),
         source_object=config.source_object,
         source_generation=config.source_generation,
-        publication_sequence=publication_header['Metadata']['sequence'],
-        extract_type=publication_header['Metadata']['type'],
+        publication_sequence=metadata.publication_sequence,
+        extract_type=metadata.extract_type,
     )
 
     # Convert to row object and attach load context
     row = attach_load_context(
-        publication_row(publication_header),
+        publication_row(publication_header.__next__()),
         context=load_context,
     )
 

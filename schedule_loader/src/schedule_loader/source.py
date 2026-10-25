@@ -29,7 +29,28 @@ def read_schedule_metadata(
     object_name: str,
     generation: int,
 ) -> SourceMetadata:
-    raise NotImplementedError
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(object_name, generation=generation)
+    blob.reload()
+
+    if not blob:
+        raise ValueError(f"Object {object_name} does not exist")
+
+    metadata = blob.metadata
+    if not metadata:
+        raise ValueError(f"Object {object_name} has no metadata")
+
+    try:
+        sequence = int(metadata["source_sequence"])
+        file_type = metadata["source_type"]
+    except KeyError as e:
+        raise ValueError(
+            f"Object {object_name} does not have required metadata") from e
+
+    return SourceMetadata(
+        publication_sequence=sequence,
+        extract_type=file_type,
+    )
 
 
 def iter_schedule_records(
@@ -40,20 +61,6 @@ def iter_schedule_records(
     generation: int,
     record_type: RecordType,
 ) -> Iterator[dict[str, Any]]:
-    raise NotImplementedError
-
-
-def read_schedule_header(
-    *,
-    client: storage.Client,
-    bucket_name: str,
-    object_name: str,
-    generation: int,
-) -> dict[str, Any]:
-    """
-    Open one exact immutable GCS object generation and return its
-    JsonTimetableV1 header record, the first line of the NDJSON file.
-    """
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(object_name, generation=generation)
 
@@ -61,14 +68,14 @@ def read_schedule_header(
         with gzip.GzipFile(
             fileobj=raw_stream  # pyright: ignore[reportArgumentType]
         ) as f:
-            line_bytes = f.readline()
+            record_type_seen = False
 
-    if not line_bytes:
-        raise ValueError("Object is empty")
+            for line in f:
+                record: dict[str, Any] = json.loads(line)
+                key = list(record.keys())[0]
 
-    try:
-        return json.loads(line_bytes)['JsonTimetableV1']
-    except KeyError as e:
-        raise ValueError(
-            "Expected JsonTimetableV1 record but no such record was found"
-        ) from e
+                if key == record_type:
+                    record_type_seen = True
+                    yield record[key]
+                elif record_type_seen:
+                    return
