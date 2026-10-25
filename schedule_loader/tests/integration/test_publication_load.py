@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import os
 from pathlib import Path
-from dotenv import load_dotenv
 
+from dotenv import load_dotenv
 import pytest
 from google.cloud import (
     bigquery,
@@ -12,17 +12,16 @@ from google.cloud import (
     storage,
 )
 
-from schedule_loader.__main__ import (
-    load_schedule_publication,
-)
-from schedule_loader.config import PublicationLoadConfig
+from schedule_loader.__main__ import load_schedule
+from schedule_loader.config import LoadConfig
+from schedule_loader.source import RecordType
 
 
 load_dotenv()
 
 
 @pytest.mark.integration
-def test_load_schedule_publication_end_to_end() -> None:
+def test_load_publication_end_to_end() -> None:
     project = os.environ["INTEGRATION_GCP_PROJECT"]
     source_bucket = os.environ[
         "INTEGRATION_SOURCE_BUCKET"
@@ -36,12 +35,13 @@ def test_load_schedule_publication_end_to_end() -> None:
 
     repo_root = Path(__file__).resolve().parents[3]
 
-    config = PublicationLoadConfig(
+    config = LoadConfig(
         source_bucket=source_bucket,
         source_object=source_object,
         source_generation=source_generation,
         project=project,
         dataset="integration_test",
+        record_type=RecordType.PUBLICATION,
         table_name="schedule_publications",
         schema_path=(
             repo_root
@@ -60,7 +60,7 @@ def test_load_schedule_publication_end_to_end() -> None:
         bigquery_storage_v1.BigQueryWriteClient()
     )
 
-    load_id = load_schedule_publication(
+    load_id = load_schedule(
         config=config,
         storage_client=storage_client,
         bigquery_client=bigquery_client,

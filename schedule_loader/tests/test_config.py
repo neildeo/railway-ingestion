@@ -6,9 +6,10 @@ import pytest
 
 import schedule_loader.config as config_module
 from schedule_loader.config import (
-    PublicationLoadConfig,
-    publication_config_from_env,
+    LoadConfig,
+    load_config_from_env,
 )
+from schedule_loader.source import RecordType
 
 
 def _set_required_env(
@@ -38,12 +39,12 @@ def _set_required_env(
         "integration_test",
     )
     monkeypatch.setenv(
-        "BQ_TABLE",
-        "schedule_publications",
+        "RECORD_TYPE",
+        "publication",
     )
 
 
-def test_publication_config_from_env(
+def test_load_config_from_env(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -57,9 +58,9 @@ def test_publication_config_from_env(
         schema_root,
     )
 
-    result = publication_config_from_env()
+    result = load_config_from_env()
 
-    assert result == PublicationLoadConfig(
+    assert result == LoadConfig(
         source_bucket="railway-raw",
         source_object=(
             "schedules/full/sequence=5251/"
@@ -68,6 +69,7 @@ def test_publication_config_from_env(
         source_generation=123456789,
         project="test-project",
         dataset="integration_test",
+        record_type=RecordType.PUBLICATION,
         table_name="schedule_publications",
         schema_path=(
             schema_root
@@ -76,7 +78,7 @@ def test_publication_config_from_env(
     )
 
 
-def test_publication_config_parses_generation_as_integer(
+def test_load_config_parses_generation_as_integer(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -93,7 +95,7 @@ def test_publication_config_parses_generation_as_integer(
         tmp_path,
     )
 
-    result = publication_config_from_env()
+    result = load_config_from_env()
 
     assert result.source_generation == 987654321
     assert isinstance(
@@ -102,7 +104,28 @@ def test_publication_config_parses_generation_as_integer(
     )
 
 
-def test_publication_config_rejects_invalid_generation(
+def test_load_config_derives_publication_destination(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _set_required_env(monkeypatch)
+
+    monkeypatch.setattr(
+        config_module,
+        "SCHEMA_ROOT",
+        tmp_path,
+    )
+
+    result = load_config_from_env()
+
+    assert result.record_type is RecordType.PUBLICATION
+    assert result.table_name == "schedule_publications"
+    assert result.schema_path == (
+        tmp_path / "schedule_publications.json"
+    )
+
+
+def test_load_config_rejects_invalid_generation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -120,7 +143,28 @@ def test_publication_config_rejects_invalid_generation(
     )
 
     with pytest.raises(ValueError):
-        publication_config_from_env()
+        load_config_from_env()
+
+
+def test_load_config_rejects_unknown_record_type(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _set_required_env(monkeypatch)
+
+    monkeypatch.setenv(
+        "RECORD_TYPE",
+        "definitely-not-a-record-type",
+    )
+
+    monkeypatch.setattr(
+        config_module,
+        "SCHEMA_ROOT",
+        tmp_path,
+    )
+
+    with pytest.raises(ValueError):
+        load_config_from_env()
 
 
 @pytest.mark.parametrize(
@@ -131,10 +175,10 @@ def test_publication_config_rejects_invalid_generation(
         "SOURCE_GENERATION",
         "BQ_PROJECT",
         "BQ_DATASET",
-        "BQ_TABLE",
+        "RECORD_TYPE",
     ],
 )
-def test_publication_config_requires_environment_variables(
+def test_load_config_requires_environment_variables(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     missing_variable: str,
@@ -156,4 +200,4 @@ def test_publication_config_requires_environment_variables(
         KeyError,
         match=missing_variable,
     ):
-        publication_config_from_env()
+        load_config_from_env()

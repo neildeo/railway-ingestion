@@ -8,11 +8,10 @@ import pytest
 from google.cloud import bigquery
 
 import schedule_loader.__main__ as loader_main
-from schedule_loader.__main__ import (
-    PublicationLoadConfig,
-    load_schedule_publication,
-)
+from schedule_loader.__main__ import load_schedule
+from schedule_loader.config import LoadConfig
 from schedule_loader.schema import SchemaMismatchError
+from schedule_loader.source import RecordType
 
 
 LOCAL_SCHEMA = (
@@ -90,8 +89,8 @@ HEADER = {
 }
 
 
-def _config() -> PublicationLoadConfig:
-    return PublicationLoadConfig(
+def _config() -> LoadConfig:
+    return LoadConfig(
         source_bucket="railway-raw",
         source_object=(
             "schedules/full/sequence=5251/"
@@ -100,6 +99,7 @@ def _config() -> PublicationLoadConfig:
         source_generation=123456789,
         project="test-project",
         dataset="raw",
+        record_type=RecordType.PUBLICATION,
         table_name="schedule_publications",
         schema_path=Path(
             "/schemas/schedule_publications.json"
@@ -123,7 +123,7 @@ class FakeBigQueryClient:
         )
 
 
-def test_load_schedule_publication_writes_one_row(
+def test_load_schedule_writes_publication_row(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config()
@@ -144,8 +144,8 @@ def test_load_schedule_publication_writes_one_row(
 
     monkeypatch.setattr(
         loader_main,
-        "read_schedule_header",
-        lambda **kwargs: HEADER,
+        "iter_schedule_records",
+        lambda **kwargs: iter([HEADER]),
     )
 
     monkeypatch.setattr(
@@ -170,11 +170,15 @@ def test_load_schedule_publication_writes_one_row(
         fake_write_pending_batch,
     )
 
-    load_schedule_publication(
+    load_id = load_schedule(
         config=config,
         storage_client=storage_client,  # pyright: ignore[reportArgumentType]
         bigquery_client=bigquery_client,  # pyright: ignore[reportArgumentType]
         write_client=write_client,  # pyright: ignore[reportArgumentType]
+    )
+
+    assert load_id == (
+        "20261024T151234.123456Z-a7f3c9"
     )
 
     assert bigquery_client.requested_table == (
@@ -197,30 +201,26 @@ def test_load_schedule_publication_writes_one_row(
 
     assert batch.num_rows == 1
 
-    assert batch.to_pylist() == [
-        {
-            "load_id": (
-                "20261024T151234.123456Z-a7f3c9"
-            ),
-            "source_object": config.source_object,
-            "source_generation": (
-                config.source_generation
-            ),
-            "publication_sequence": 5251,
-            "extract_type": "full",
-            "timestamp": batch.to_pylist()[0][
-                "timestamp"
-            ],
-            "sender_application": "NTROD",
-            "sender_component": "SCHEDULE",
-            "sender_organisation": "Rockshore",
-            "classification": "public",
-            "owner": "Network Rail",
-        }
-    ]
+    row = batch.to_pylist()[0]
+
+    assert row["load_id"] == (
+        "20261024T151234.123456Z-a7f3c9"
+    )
+    assert row["source_object"] == config.source_object
+    assert (
+        row["source_generation"]
+        == config.source_generation
+    )
+    assert row["publication_sequence"] == 5251
+    assert row["extract_type"] == "full"
+    assert row["sender_application"] == "NTROD"
+    assert row["sender_component"] == "SCHEDULE"
+    assert row["sender_organisation"] == "Rockshore"
+    assert row["classification"] == "public"
+    assert row["owner"] == "Network Rail"
 
 
-def test_load_schedule_publication_reads_exact_source(
+def test_load_schedule_requests_configured_record_type(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config()
@@ -239,14 +239,14 @@ def test_load_schedule_publication_reads_exact_source(
         lambda path: LOCAL_SCHEMA,
     )
 
-    def fake_read_schedule_header(**kwargs):
+    def fake_iter_schedule_records(**kwargs):
         source_call.update(kwargs)
-        return HEADER
+        return iter([HEADER])
 
     monkeypatch.setattr(
         loader_main,
-        "read_schedule_header",
-        fake_read_schedule_header,
+        "iter_schedule_records",
+        fake_iter_schedule_records,
     )
 
     monkeypatch.setattr(
@@ -261,7 +261,7 @@ def test_load_schedule_publication_reads_exact_source(
         lambda **kwargs: None,
     )
 
-    load_schedule_publication(
+    load_schedule(
         config=config,
         storage_client=storage_client,  # pyright: ignore[reportArgumentType]
         bigquery_client=bigquery_client,  # pyright: ignore[reportArgumentType]
@@ -273,10 +273,11 @@ def test_load_schedule_publication_reads_exact_source(
         "bucket_name": config.source_bucket,
         "object_name": config.source_object,
         "generation": config.source_generation,
+        "record_type": RecordType.PUBLICATION,
     }
 
 
-def test_load_schedule_publication_uses_header_identity(
+def test_load_schedule_uses_publication_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config()
@@ -305,8 +306,8 @@ def test_load_schedule_publication_uses_header_identity(
 
     monkeypatch.setattr(
         loader_main,
-        "read_schedule_header",
-        lambda **kwargs: header,
+        "iter_schedule_records",
+        lambda **kwargs: iter([header]),
     )
 
     monkeypatch.setattr(
@@ -330,7 +331,7 @@ def test_load_schedule_publication_uses_header_identity(
         fake_write_pending_batch,
     )
 
-    load_schedule_publication(
+    load_schedule(
         config=config,
         storage_client=storage_client,  # pyright: ignore[reportArgumentType]
         bigquery_client=bigquery_client,  # pyright: ignore[reportArgumentType]
@@ -345,7 +346,7 @@ def test_load_schedule_publication_uses_header_identity(
     assert row["extract_type"] == "update"
 
 
-def test_load_schedule_publication_validates_schema_before_reading_source(
+def test_load_schedule_validates_schema_before_reading_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config()
@@ -374,15 +375,15 @@ def test_load_schedule_publication_validates_schema_before_reading_source(
         lambda path: LOCAL_SCHEMA,
     )
 
-    def fake_read_schedule_header(**kwargs):
+    def fake_iter_schedule_records(**kwargs):
         nonlocal source_was_read
         source_was_read = True
-        return HEADER
+        return iter([HEADER])
 
     monkeypatch.setattr(
         loader_main,
-        "read_schedule_header",
-        fake_read_schedule_header,
+        "iter_schedule_records",
+        fake_iter_schedule_records,
     )
 
     def fake_write_pending_batch(**kwargs):
@@ -396,7 +397,7 @@ def test_load_schedule_publication_validates_schema_before_reading_source(
     )
 
     with pytest.raises(SchemaMismatchError):
-        load_schedule_publication(
+        load_schedule(
             config=config,
             storage_client=storage_client,  # type: ignore
             bigquery_client=bigquery_client,  # type: ignore

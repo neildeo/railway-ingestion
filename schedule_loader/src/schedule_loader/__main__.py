@@ -3,7 +3,7 @@ from google.cloud import bigquery, bigquery_storage_v1, storage
 from datetime import datetime, timezone
 import secrets
 
-from schedule_loader.config import PublicationLoadConfig
+from schedule_loader.config import LoadConfig
 from schedule_loader.schema import load_bigquery_schema, assert_schemas_equal
 from schedule_loader.arrow import batch_rows_as_arrow
 from schedule_loader.source import read_schedule_header
@@ -11,9 +11,9 @@ from schedule_loader.row import LoadContext, attach_load_context, publication_ro
 from schedule_loader.writer import write_pending_batch
 
 
-def load_schedule_publication(
+def load_schedule(
     *,
-    config: PublicationLoadConfig,
+    config: LoadConfig,
     storage_client: storage.Client,
     bigquery_client: bigquery.Client,
     write_client: bigquery_storage_v1.BigQueryWriteClient,
