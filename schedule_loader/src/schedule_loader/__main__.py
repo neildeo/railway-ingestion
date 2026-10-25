@@ -6,8 +6,8 @@ import secrets
 from schedule_loader.config import LoadConfig
 from schedule_loader.schema import load_bigquery_schema, assert_schemas_equal
 from schedule_loader.arrow import batch_rows_as_arrow
-from schedule_loader.source import read_schedule_metadata, iter_schedule_records
-from schedule_loader.row import LoadContext, attach_load_context, publication_row
+from schedule_loader.source import read_schedule_metadata, iter_schedule_records, RecordType
+from schedule_loader.row import LoadContext, attach_load_context, publication_row, tiploc_row
 from schedule_loader.writer import write_pending_batch
 
 
@@ -44,15 +44,6 @@ def load_schedule(
         generation=config.source_generation,
     )
 
-    # Get header
-    publication_header = iter_schedule_records(
-        client=storage_client,
-        bucket_name=config.source_bucket,
-        object_name=config.source_object,
-        generation=config.source_generation,
-        record_type=config.record_type,
-    )
-
     # Generate load context
     load_context = LoadContext(
         load_id=generate_load_id(),
@@ -62,16 +53,31 @@ def load_schedule(
         extract_type=metadata.extract_type,
     )
 
-    # Convert to row object and attach load context
-    row = attach_load_context(
-        publication_row(publication_header.__next__()),
-        context=load_context,
+    # Get header
+    records = iter_schedule_records(
+        client=storage_client,
+        bucket_name=config.source_bucket,
+        object_name=config.source_object,
+        generation=config.source_generation,
+        record_type=config.record_type,
     )
+
+    # Convert to rows object and attach load context
+    match config.record_type:
+        case RecordType.PUBLICATION:
+            rows = [publication_row(r) for r in records]
+        case RecordType.TIPLOC:
+            rows = [tiploc_row(r) for r in records]
+        case _:
+            raise NotImplementedError(
+                f"Record type {config.record_type} not recognised")
+    rows_with_ctx = [attach_load_context(
+        r, context=load_context) for r in rows]
 
     # Prepare RecordBatch for BQ write
     # Already confirmed the local schema matches the landing table
     batch = batch_rows_as_arrow(
-        [row],
+        rows_with_ctx,
         bq_schema=local_schema,
     )
 
