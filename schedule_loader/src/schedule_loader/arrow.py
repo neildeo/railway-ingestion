@@ -23,14 +23,23 @@ def iter_rows_as_arrow_batches(
 ) -> Iterator[pa.RecordBatch]:
     arrow_schema = bigquery_to_arrow_schema(bq_schema)
 
-    if batch_size:
-        for batch in batched(rows, batch_size):
-            yield pa.RecordBatch.from_pylist(
-                list(batch),
-                schema=arrow_schema
-            )
-    else:
-        yield pa.RecordBatch.from_pylist(list(rows), schema=arrow_schema)
+    if batch_size is None:
+        materialised_rows = list(rows)
+
+        if not materialised_rows:
+            return
+
+        yield pa.RecordBatch.from_pylist(
+            materialised_rows,
+            schema=arrow_schema,
+        )
+        return
+
+    for batch in batched(rows, batch_size):
+        yield pa.RecordBatch.from_pylist(
+            list(batch),
+            schema=arrow_schema,
+        )
 
 
 def batch_rows_as_arrow(rows: list[dict[str, Any]], bq_schema: Sequence[bigquery.SchemaField]) -> pa.RecordBatch:
