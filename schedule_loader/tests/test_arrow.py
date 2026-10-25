@@ -293,3 +293,15 @@ def test_iter_rows_as_arrow_batches_none_uses_single_batch() -> None:
             "name": "row-4",
         },
     ]
+
+
+def test_iter_rows_as_arrow_batches_none_returns_empty_for_empty_input() -> None:
+    batches = list(
+        iter_rows_as_arrow_batches(
+            iter([]),
+            bq_schema=TEST_SCHEMA,
+            batch_size=None,
+        )
+    )
+
+    assert batches == []
