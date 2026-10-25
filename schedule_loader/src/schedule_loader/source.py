@@ -33,12 +33,10 @@ def read_schedule_metadata(
     blob = bucket.blob(object_name, generation=generation)
     blob.reload()
 
-    if not blob:
-        raise ValueError(f"Object {object_name} does not exist")
-
     metadata = blob.metadata
     if not metadata:
-        raise ValueError(f"Object {object_name} has no metadata")
+        raise ValueError(
+            f"Object {object_name} does not exist or has no metadata")
 
     try:
         sequence = int(metadata["source_sequence"])

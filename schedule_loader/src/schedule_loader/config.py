@@ -53,11 +53,12 @@ def load_config_from_env() -> LoadConfig:
     project = os.environ["BQ_PROJECT"]
     dataset = os.environ["BQ_DATASET"]
 
-    type = os.environ["RECORD_TYPE"]
+    record_type_name = os.environ["RECORD_TYPE"]
     try:
-        record_type = RecordType(RECORD_TYPE_NAMES[type])
+        record_type = RecordType(RECORD_TYPE_NAMES[record_type_name])
     except KeyError as e:
-        raise ValueError(f"Unrecognised record type : {type}") from e
+        raise ValueError(
+            f"Unrecognised record type : {record_type_name}") from e
 
     source_generation = int(source_generation)
 
