@@ -4,7 +4,24 @@ import pyarrow as pa
 import pytest
 from google.cloud import bigquery
 
-from schedule_loader.arrow import bigquery_to_arrow_schema
+from schedule_loader.arrow import (
+    bigquery_to_arrow_schema,
+    iter_rows_as_arrow_batches,
+)
+
+
+TEST_SCHEMA = (
+    bigquery.SchemaField(
+        "id",
+        "INTEGER",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "name",
+        "STRING",
+        mode="REQUIRED",
+    ),
+)
 
 
 @pytest.mark.parametrize(
@@ -124,3 +141,155 @@ def test_unsupported_bigquery_type_raises_not_implemented() -> None:
         match="NUMERIC",
     ):
         bigquery_to_arrow_schema(schema)
+
+
+def test_iter_rows_as_arrow_batches_splits_rows_by_batch_size() -> None:
+    rows = (
+        {
+            "id": i,
+            "name": f"row-{i}",
+        }
+        for i in range(5)
+    )
+
+    batches = list(
+        iter_rows_as_arrow_batches(
+            rows,
+            bq_schema=TEST_SCHEMA,
+            batch_size=2,
+        )
+    )
+
+    assert [
+        batch.num_rows
+        for batch in batches
+    ] == [2, 2, 1]
+
+
+def test_iter_rows_as_arrow_batches_preserves_row_order() -> None:
+    rows = (
+        {
+            "id": i,
+            "name": f"row-{i}",
+        }
+        for i in range(5)
+    )
+
+    batches = list(
+        iter_rows_as_arrow_batches(
+            rows,
+            bq_schema=TEST_SCHEMA,
+            batch_size=2,
+        )
+    )
+
+    result = [
+        row
+        for batch in batches
+        for row in batch.to_pylist()
+    ]
+
+    assert result == [
+        {
+            "id": 0,
+            "name": "row-0",
+        },
+        {
+            "id": 1,
+            "name": "row-1",
+        },
+        {
+            "id": 2,
+            "name": "row-2",
+        },
+        {
+            "id": 3,
+            "name": "row-3",
+        },
+        {
+            "id": 4,
+            "name": "row-4",
+        },
+    ]
+
+
+def test_iter_rows_as_arrow_batches_uses_expected_schema() -> None:
+    rows = (
+        {
+            "id": i,
+            "name": f"row-{i}",
+        }
+        for i in range(3)
+    )
+
+    batches = list(
+        iter_rows_as_arrow_batches(
+            rows,
+            bq_schema=TEST_SCHEMA,
+            batch_size=2,
+        )
+    )
+
+    expected_schema = bigquery_to_arrow_schema(
+        TEST_SCHEMA
+    )
+
+    assert all(
+        batch.schema == expected_schema
+        for batch in batches
+    )
+
+
+def test_iter_rows_as_arrow_batches_returns_empty_for_empty_input() -> None:
+    batches = list(
+        iter_rows_as_arrow_batches(
+            iter([]),
+            bq_schema=TEST_SCHEMA,
+            batch_size=2,
+        )
+    )
+
+    assert batches == []
+
+
+def test_iter_rows_as_arrow_batches_none_uses_single_batch() -> None:
+    rows = (
+        {
+            "id": i,
+            "name": f"row-{i}",
+        }
+        for i in range(5)
+    )
+
+    batches = list(
+        iter_rows_as_arrow_batches(
+            rows,
+            bq_schema=TEST_SCHEMA,
+            batch_size=None,
+        )
+    )
+
+    assert len(batches) == 1
+
+    assert batches[0].to_pylist() == [
+        {
+            "id": 0,
+            "name": "row-0",
+        },
+        {
+            "id": 1,
+            "name": "row-1",
+        },
+        {
+            "id": 2,
+            "name": "row-2",
+        },
+        {
+            "id": 3,
+            "name": "row-3",
+        },
+        {
+            "id": 4,
+            "name": "row-4",
+        },
+    ]
