@@ -1,8 +1,10 @@
 from __future__ import annotations
+from typing import Any
 from google.cloud import bigquery, bigquery_storage_v1, storage
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import secrets
 from functools import partial
+from dataclasses import dataclass
 
 from schedule_loader.config import LoadConfig
 from schedule_loader.schema import load_bigquery_schema, assert_schemas_equal
@@ -15,6 +17,13 @@ from schedule_loader.writer import write_pending_batches
 ARROW_RECORD_BATCH_SIZE = 1000
 
 
+@dataclass(frozen=True)
+class LoadResult:
+    publication_sequence: int
+    extract_type: str
+    row_count: int
+
+
 def load_schedule(
     *,
     config: LoadConfig,
@@ -22,7 +31,7 @@ def load_schedule(
     storage_client: storage.Client,
     bigquery_client: bigquery.Client,
     write_client: bigquery_storage_v1.BigQueryWriteClient,
-) -> str:
+) -> LoadResult:
     bigquery_table_id = (
         f"{config.project}."
         f"{config.dataset}."
@@ -99,17 +108,24 @@ def load_schedule(
         batches=batches,
     )
 
-    return load_context.load_id
+    raise NotImplementedError
 
 
-def generate_load_id() -> str:
-    timestamp = datetime.now(
-        timezone.utc
-    ).strftime("%Y%m%dT%H%M%S.%fZ")
+def generate_load_id(timestamp: datetime) -> str:
+    timestamp_str = timestamp.astimezone(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
 
     suffix = secrets.token_hex(3)
 
-    return f"{timestamp}-{suffix}"
+    return f"{timestamp_str}-{suffix}"
+
+
+def write_load_audit(
+    client: bigquery.Client,
+    project: str,
+    dataset: str,
+    row: dict[str, Any],
+):
+    raise NotImplementedError
 
 
 def main() -> None:

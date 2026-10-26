@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import date
+from datetime import date, datetime, UTC
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -53,7 +53,7 @@ def test_load_schedules_end_to_end() -> None:
         ),
     )
 
-    load_id = generate_load_id()
+    load_id = generate_load_id(datetime.now(UTC))
 
     storage_client = storage.Client(
         project=project,
@@ -65,7 +65,7 @@ def test_load_schedules_end_to_end() -> None:
         bigquery_storage_v1.BigQueryWriteClient()
     )
 
-    load_id = load_schedule(
+    load_result = load_schedule(
         config=config,
         load_id=load_id,
         storage_client=storage_client,

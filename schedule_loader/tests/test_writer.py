@@ -18,10 +18,7 @@ TABLE = (
 
 def _batch(*values: int) -> pa.RecordBatch:
     return pa.RecordBatch.from_pylist(
-        [
-            {"value": value}
-            for value in values
-        ],
+        [{"value": value} for value in values],
         schema=pa.schema(
             [
                 pa.field(
@@ -99,9 +96,7 @@ class FakeWriteClient:
         )
 
         return SimpleNamespace(
-            name=(
-                f"{TABLE}/streams/test-stream"
-            )
+            name=f"{TABLE}/streams/test-stream"
         )
 
     def finalize_write_stream(
@@ -139,18 +134,16 @@ def fake_append_rows_stream(
 def test_write_pending_batches_appends_all_batches_to_one_stream() -> None:
     client = FakeWriteClient()
 
-    batches = iter(
-        [
-            _batch(1, 2),
-            _batch(3, 4),
-            _batch(5),
-        ]
-    )
-
     write_pending_batches(
         client=client,  # pyright: ignore[reportArgumentType]
         table=TABLE,
-        batches=batches,
+        batches=iter(
+            [
+                _batch(1, 2),
+                _batch(3, 4),
+                _batch(5),
+            ]
+        ),
     )
 
     assert len(client.create_calls) == 1
@@ -164,18 +157,16 @@ def test_write_pending_batches_appends_all_batches_to_one_stream() -> None:
 def test_write_pending_batches_uses_cumulative_row_offsets() -> None:
     client = FakeWriteClient()
 
-    batches = iter(
-        [
-            _batch(1, 2),
-            _batch(3, 4),
-            _batch(5),
-        ]
-    )
-
     write_pending_batches(
         client=client,  # pyright: ignore[reportArgumentType]
         table=TABLE,
-        batches=batches,
+        batches=iter(
+            [
+                _batch(1, 2),
+                _batch(3, 4),
+                _batch(5),
+            ]
+        ),
     )
 
     append_stream = FakeAppendRowsStream.instances[0]
@@ -184,6 +175,24 @@ def test_write_pending_batches_uses_cumulative_row_offsets() -> None:
         request.offset
         for request in append_stream.requests
     ] == [0, 2, 4]
+
+
+def test_write_pending_batches_returns_final_offset_as_row_count() -> None:
+    client = FakeWriteClient()
+
+    row_count = write_pending_batches(
+        client=client,  # pyright: ignore[reportArgumentType]
+        table=TABLE,
+        batches=iter(
+            [
+                _batch(1, 2),
+                _batch(3, 4),
+                _batch(5),
+            ]
+        ),
+    )
+
+    assert row_count == 5
 
 
 def test_write_pending_batches_sends_each_record_batch() -> None:
@@ -248,9 +257,7 @@ def test_write_pending_batches_finalizes_and_commits_once() -> None:
         ),
     )
 
-    stream_name = (
-        f"{TABLE}/streams/test-stream"
-    )
+    stream_name = f"{TABLE}/streams/test-stream"
 
     assert client.finalize_calls == [
         stream_name,
@@ -307,15 +314,16 @@ def test_write_pending_batches_uses_first_batch_schema() -> None:
     )
 
 
-def test_write_pending_batches_returns_without_writing_for_empty_input() -> None:
+def test_write_pending_batches_returns_zero_without_writing_for_empty_input() -> None:
     client = FakeWriteClient()
 
-    write_pending_batches(
+    row_count = write_pending_batches(
         client=client,  # pyright: ignore[reportArgumentType]
         table=TABLE,
         batches=iter([]),
     )
 
+    assert row_count == 0
     assert client.create_calls == []
     assert FakeAppendRowsStream.instances == []
     assert client.finalize_calls == []
