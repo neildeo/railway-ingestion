@@ -8,7 +8,7 @@ from schedule_loader.config import LoadConfig
 from schedule_loader.schema import load_bigquery_schema, assert_schemas_equal
 from schedule_loader.arrow import iter_rows_as_arrow_batches
 from schedule_loader.source import read_schedule_metadata, iter_schedule_records, RecordType
-from schedule_loader.row import LoadContext, attach_load_context, publication_row, tiploc_row
+from schedule_loader.row import LoadContext, attach_load_context, publication_row, tiploc_row, association_row
 from schedule_loader.writer import write_pending_batches
 
 
@@ -68,6 +68,8 @@ def load_schedule(
 
     # Convert to rows object and attach load context
     match config.record_type:
+        case RecordType.ASSOCIATION:
+            rows = map(association_row, records)
         case RecordType.PUBLICATION:
             rows = map(publication_row, records)
         case RecordType.TIPLOC:
@@ -110,8 +112,6 @@ def generate_load_id() -> str:
 def main() -> None:
     """
     Load one SCHEDULE record family from an exact immutable source object.
-
-    Phase 2 implements publications and TIPLOCs.
     """
     raise NotImplementedError
 

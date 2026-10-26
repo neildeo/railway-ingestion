@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from schedule_loader.row import (
     LoadContext,
+    association_row,
     attach_load_context,
     publication_row,
     tiploc_row,
@@ -152,4 +153,71 @@ def test_attach_load_context_does_not_mutate_input_row() -> None:
 
     assert original == {
         "owner": "Network Rail",
+    }
+
+
+def test_association_row_maps_create_record() -> None:
+    record = {
+        "transaction_type": "Create",
+        "main_train_uid": "C30123",
+        "assoc_train_uid": "C42949",
+        "assoc_start_date": "2024-06-03T00:00:00Z",
+        "assoc_end_date": "2024-06-21T00:00:00Z",
+        "assoc_days": "1111100",
+        "category": "NP",
+        "date_indicator": "S",
+        "location": "YORK",
+        "base_location_suffix": None,
+        "assoc_location_suffix": None,
+        "diagram_type": "T",
+        "CIF_stp_indicator": "P",
+    }
+
+    result = association_row(record)
+
+    assert result == {
+        "transaction_type": "Create",
+        "CIF_stp_indicator": "P",
+        "assoc_start_date": date(2024, 6, 3),
+        "assoc_train_uid": "C42949",
+        "base_location_suffix": None,
+        "diagram_type": "T",
+        "location": "YORK",
+        "main_train_uid": "C30123",
+        "assoc_days": "1111100",
+        "assoc_end_date": date(2024, 6, 21),
+        "assoc_location_suffix": None,
+        "category": "NP",
+        "date_indicator": "S",
+    }
+
+
+def test_association_row_maps_optional_fields_when_absent() -> None:
+    record = {
+        "transaction_type": "Delete",
+        "main_train_uid": "C30123",
+        "assoc_train_uid": "C42949",
+        "assoc_start_date": "2024-06-03T00:00:00Z",
+        "base_location_suffix": None,
+        "diagram_type": "T",
+        "location": "YORK",
+        "CIF_stp_indicator": "P",
+    }
+
+    result = association_row(record)
+
+    assert result == {
+        "transaction_type": "Delete",
+        "CIF_stp_indicator": "P",
+        "assoc_start_date": date(2024, 6, 3),
+        "assoc_train_uid": "C42949",
+        "base_location_suffix": None,
+        "diagram_type": "T",
+        "location": "YORK",
+        "main_train_uid": "C30123",
+        "assoc_days": None,
+        "assoc_end_date": None,
+        "assoc_location_suffix": None,
+        "category": None,
+        "date_indicator": None,
     }

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pyarrow as pa
 import pytest
 from google.cloud import bigquery
+from datetime import date
 
 import schedule_loader.__main__ as loader_main
 from schedule_loader.__main__ import load_schedule
@@ -16,6 +17,99 @@ from schedule_loader.source import (
     SourceMetadata,
 )
 
+
+ASSOCIATION_SCHEMA = (
+    bigquery.SchemaField(
+        "load_id",
+        "STRING",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "source_object",
+        "STRING",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "source_generation",
+        "INTEGER",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "publication_sequence",
+        "INTEGER",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "extract_type",
+        "STRING",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "transaction_type",
+        "STRING",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "CIF_stp_indicator",
+        "STRING",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "assoc_start_date",
+        "DATE",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "assoc_train_uid",
+        "STRING",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "base_location_suffix",
+        "STRING",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
+        "diagram_type",
+        "STRING",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "location",
+        "STRING",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "main_train_uid",
+        "STRING",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "assoc_days",
+        "STRING",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
+        "assoc_end_date",
+        "DATE",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
+        "assoc_location_suffix",
+        "STRING",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
+        "category",
+        "STRING",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
+        "date_indicator",
+        "STRING",
+        mode="NULLABLE",
+    ),
+)
 
 PUBLICATION_SCHEMA = (
     bigquery.SchemaField(
@@ -156,6 +250,39 @@ HEADER = {
 }
 
 
+ASSOCIATION_RECORDS = [
+    {
+        "transaction_type": "Create",
+        "main_train_uid": "C30123",
+        "assoc_train_uid": "C42949",
+        "assoc_start_date": "2024-06-03T00:00:00Z",
+        "assoc_end_date": "2024-06-21T00:00:00Z",
+        "assoc_days": "1111100",
+        "category": "NP",
+        "date_indicator": "S",
+        "location": "YORK",
+        "base_location_suffix": None,
+        "assoc_location_suffix": None,
+        "diagram_type": "T",
+        "CIF_stp_indicator": "P",
+    },
+    {
+        "transaction_type": "Create",
+        "main_train_uid": "C11111",
+        "assoc_train_uid": "C22222",
+        "assoc_start_date": "2024-07-01T00:00:00Z",
+        "assoc_end_date": "2024-07-31T00:00:00Z",
+        "assoc_days": "0000011",
+        "category": "JJ",
+        "date_indicator": "S",
+        "location": "LEEDS",
+        "base_location_suffix": None,
+        "assoc_location_suffix": None,
+        "diagram_type": "T",
+        "CIF_stp_indicator": "P",
+    },
+]
+
 TIPLOC_RECORDS = [
     {
         "transaction_type": "Create",
@@ -188,6 +315,24 @@ SOURCE_METADATA = SourceMetadata(
     publication_sequence=5251,
     extract_type="full",
 )
+
+
+def _association_config() -> LoadConfig:
+    return LoadConfig(
+        source_bucket="railway-raw",
+        source_object=(
+            "schedules/full/sequence=5251/"
+            "schedules.json.gz"
+        ),
+        source_generation=123456789,
+        project="test-project",
+        dataset="raw",
+        record_type=RecordType.ASSOCIATION,
+        table_name="schedule_associations",
+        schema_path=Path(
+            "/schemas/schedule_associations.json"
+        ),
+    )
 
 
 def _publication_config() -> LoadConfig:
@@ -336,6 +481,93 @@ def test_load_schedule_shapes_publication_records(
     assert row["sender_organisation"] == "Rockshore"
     assert row["classification"] == "public"
     assert row["owner"] == "Network Rail"
+
+
+def test_load_schedule_shapes_association_records(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _association_config()
+
+    storage_client = object()
+    write_client = object()
+    bigquery_client = FakeBigQueryClient(
+        ASSOCIATION_SCHEMA,
+    )
+
+    written_batches: list[pa.RecordBatch] = []
+
+    monkeypatch.setattr(
+        loader_main,
+        "load_bigquery_schema",
+        lambda path: ASSOCIATION_SCHEMA,
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "read_schedule_metadata",
+        lambda **kwargs: SOURCE_METADATA,
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "iter_schedule_records",
+        lambda **kwargs: iter(ASSOCIATION_RECORDS),
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "generate_load_id",
+        lambda: "load-1",
+    )
+
+    def fake_write_pending_batches(
+        *,
+        client,
+        table,
+        batches,
+    ) -> None:
+        written_batches.extend(batches)
+
+    monkeypatch.setattr(
+        loader_main,
+        "write_pending_batches",
+        fake_write_pending_batches,
+    )
+
+    load_id = load_schedule(
+        config=config,
+        storage_client=storage_client,  # pyright: ignore[reportArgumentType]
+        bigquery_client=bigquery_client,  # pyright: ignore[reportArgumentType]
+        write_client=write_client,  # pyright: ignore[reportArgumentType]
+    )
+
+    assert load_id == "load-1"
+
+    rows = [
+        row
+        for batch in written_batches
+        for row in batch.to_pylist()
+    ]
+
+    assert len(rows) == 2
+
+    assert all(
+        row["load_id"] == "load-1"
+        for row in rows
+    )
+
+    assert rows[0]["main_train_uid"] == "C30123"
+    assert rows[0]["assoc_train_uid"] == "C42949"
+    assert rows[0]["assoc_start_date"] == date(
+        2024,
+        6,
+        3,
+    )
+    assert rows[0]["assoc_end_date"] == date(
+        2024,
+        6,
+        21,
+    )
 
 
 def test_load_schedule_shapes_and_batches_tiploc_records(

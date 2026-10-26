@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 
@@ -29,6 +29,45 @@ def attach_load_context(
         "publication_sequence": context.publication_sequence,
         "extract_type": context.extract_type,
         **row,
+    }
+
+
+def association_row(
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Convert AssociationV1 source data into fields specific
+    to raw.schedule_associations.
+
+    Common load/provenance fields are attached separately with
+    attach_load_context().
+    """
+    return {
+        "transaction_type": record["transaction_type"],
+        "CIF_stp_indicator": record["CIF_stp_indicator"],
+        "assoc_start_date": date.fromisoformat(
+            record["assoc_start_date"][:10]
+        ),
+        "assoc_train_uid": record["assoc_train_uid"],
+        "base_location_suffix": record.get(
+            "base_location_suffix"
+        ),
+        "diagram_type": record["diagram_type"],
+        "location": record["location"],
+        "main_train_uid": record["main_train_uid"],
+        "assoc_days": record.get("assoc_days"),
+        "assoc_end_date": (
+            date.fromisoformat(
+                record["assoc_end_date"][:10]
+            )
+            if record.get("assoc_end_date")
+            else None
+        ),
+        "assoc_location_suffix": record.get(
+            "assoc_location_suffix"
+        ),
+        "category": record.get("category"),
+        "date_indicator": record.get("date_indicator"),
     }
 
 
