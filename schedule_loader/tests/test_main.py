@@ -353,7 +353,7 @@ def test_load_schedule_shapes_and_batches_tiploc_records(
 
     monkeypatch.setattr(
         loader_main,
-        "BATCH_SIZE",
+        "ARROW_RECORD_BATCH_SIZE",
         2,
     )
 
