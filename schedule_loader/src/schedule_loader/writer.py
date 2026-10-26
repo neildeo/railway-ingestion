@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Iterator
+from itertools import tee
 
 import pyarrow as pa
 from google.cloud import bigquery_storage_v1
@@ -14,17 +15,8 @@ def write_pending_batches(
     table: str,
     batches: Iterator[pa.RecordBatch]
 ):
-    raise NotImplementedError
-
-
-def write_pending_batch(
-    *,
-    client: bigquery_storage_v1.BigQueryWriteClient,
-    table: str,
-    batch: pa.RecordBatch,
-) -> None:
     """
-    Atomically write one Arrow RecordBatch to a BigQuery table.
+    Atomically write a sequence of Arrow `RecordBatch`es to a BigQuery table.
 
     `table` must be the fully-qualified Storage Write API table resource:
 
@@ -32,7 +24,19 @@ def write_pending_batch(
 
     Data is written to a PENDING stream and becomes visible only after
     the stream is finalized and committed.
+
+    This function does not control the batching strategy - this 
+    responsibility falls to the caller.
     """
+    # We need to peek the first batch to:
+    # (a) get the schema without advancing the original iterator;
+    # (b) check if batches is empty
+    batches, schema_iter = tee(batches, 2)
+    try:
+        pa_schema = schema_iter.__next__().schema
+    except StopIteration:  # This means batches is empty, so we can just return
+        return
+
     write_stream = client.create_write_stream(
         parent=table,
         write_stream=types.WriteStream(
@@ -42,23 +46,26 @@ def write_pending_batch(
 
     request_template = _append_request_template(
         write_stream=write_stream.name,
-        schema=batch.schema,
+        schema=pa_schema,
     )
-
     append_stream = AppendRowsStream(
         client,
         request_template,
     )
 
     try:
-        request = _append_request(batch)
+        # offset = wrappers_pb2.Int64Value(value=0)
+        offset = 0
+        for batch in batches:
+            request = _append_request(batch)
+            request.offset = wrappers_pb2.Int64Value(value=offset)
 
-        append_future = append_stream.send(request)
+            append_future = append_stream.send(request)
 
-        # AppendRows is asynchronous. Do not finalize the stream until
-        # BigQuery has acknowledged this append.
-        append_future.result()
-
+            # AppendRows is asynchronous. Do not finalize the stream until
+            # BigQuery has acknowledged this append.
+            append_future.result()
+            offset += batch.num_rows
     finally:
         append_stream.close()
 
@@ -108,16 +115,13 @@ def _append_request(
 ) -> types.AppendRowsRequest:
     """
     Build one AppendRows request containing a serialized Arrow batch.
+
+    Caller is responsible for setting the offset.
     """
     request = types.AppendRowsRequest()
 
     request.arrow_rows.rows.serialized_record_batch = (
         batch.serialize().to_pybytes()
     )
-
-    # This is the first and only append to this stream. Using an explicit
-    # offset gives the append deterministic position semantics and sets us
-    # up naturally for multiple batches later.
-    request.offset = wrappers_pb2.Int64Value(value=0)
 
     return request

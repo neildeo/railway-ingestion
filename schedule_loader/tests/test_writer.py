@@ -181,7 +181,7 @@ def test_write_pending_batches_uses_cumulative_row_offsets() -> None:
     append_stream = FakeAppendRowsStream.instances[0]
 
     assert [
-        request.offset.value
+        request.offset
         for request in append_stream.requests
     ] == [0, 2, 4]
 

@@ -8,7 +8,7 @@ from schedule_loader.schema import load_bigquery_schema, assert_schemas_equal
 from schedule_loader.arrow import batch_rows_as_arrow
 from schedule_loader.source import read_schedule_metadata, iter_schedule_records, RecordType
 from schedule_loader.row import LoadContext, attach_load_context, publication_row, tiploc_row
-from schedule_loader.writer import write_pending_batch
+from schedule_loader.writer import write_pending_batches
 
 
 def load_schedule(
@@ -82,10 +82,10 @@ def load_schedule(
     )
 
     # Write to BQ
-    write_pending_batch(
+    write_pending_batches(
         client=write_client,
         table=storage_write_table,
-        batch=batch,
+        batches=[batch].__iter__(),
     )
 
     return load_context.load_id
