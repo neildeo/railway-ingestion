@@ -811,3 +811,86 @@ def test_load_schedule_validates_schema_before_reading_source(
     assert not metadata_was_read
     assert not records_were_read
     assert not writer_was_called
+
+
+def test_load_schedule_does_not_materialise_all_records_before_writing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _tiploc_config()
+
+    storage_client = object()
+    write_client = object()
+    bigquery_client = FakeBigQueryClient(
+        TIPLOC_SCHEMA,
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "ARROW_RECORD_BATCH_SIZE",
+        2,
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "load_bigquery_schema",
+        lambda path: TIPLOC_SCHEMA,
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "read_schedule_metadata",
+        lambda **kwargs: SOURCE_METADATA,
+    )
+
+    def source_records():
+        yield TIPLOC_RECORDS[0]
+        yield TIPLOC_RECORDS[1]
+
+        raise AssertionError(
+            "Source was consumed beyond the first batch"
+        )
+
+    monkeypatch.setattr(
+        loader_main,
+        "iter_schedule_records",
+        lambda **kwargs: source_records(),
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "generate_load_id",
+        lambda: "load-1",
+    )
+
+    written_batch: pa.RecordBatch | None = None
+
+    def fake_write_pending_batches(
+        *,
+        client,
+        table,
+        batches,
+    ) -> None:
+        nonlocal written_batch
+
+        written_batch = next(batches)
+
+        # Deliberately do not request another batch.
+        # This verifies that upstream records are consumed
+        # only as the writer advances the batch iterator.
+
+    monkeypatch.setattr(
+        loader_main,
+        "write_pending_batches",
+        fake_write_pending_batches,
+    )
+
+    load_id = load_schedule(
+        config=config,
+        storage_client=storage_client,  # pyright: ignore[reportArgumentType]
+        bigquery_client=bigquery_client,  # pyright: ignore[reportArgumentType]
+        write_client=write_client,  # pyright: ignore[reportArgumentType]
+    )
+
+    assert load_id == "load-1"
+    assert written_batch is not None
+    assert written_batch.num_rows == 2
