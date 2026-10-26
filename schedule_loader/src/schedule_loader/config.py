@@ -5,7 +5,7 @@ import os
 from schedule_loader.source import RecordType
 
 
-SCHEMA_ROOT = Path("schedule_schemas")
+SCHEMA_ROOT = Path("schemas")
 
 # Mapping from record type to local BigQuery schema
 SCHEMA_FILES: dict[RecordType, str] = {
