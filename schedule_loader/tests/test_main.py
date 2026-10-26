@@ -251,9 +251,49 @@ ASSOCIATION_SCHEMA = (
         mode="REQUIRED",
     ),
     bigquery.SchemaField(
+        "base_location_suffix",
+        "STRING",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
+        "diagram_type",
+        "STRING",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "location",
+        "STRING",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
         "main_train_uid",
         "STRING",
         mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "assoc_days",
+        "STRING",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
+        "assoc_end_date",
+        "DATE",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
+        "assoc_location_suffix",
+        "STRING",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
+        "category",
+        "STRING",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
+        "date_indicator",
+        "STRING",
+        mode="NULLABLE",
     ),
 )
 
@@ -310,6 +350,21 @@ SCHEDULE_SCHEMA = (
         mode="NULLABLE",
     ),
     bigquery.SchemaField(
+        "CIF_bank_holiday_running",
+        "STRING",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
+        "schedule_days_runs",
+        "STRING",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
+        "train_status",
+        "STRING",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
         "atoc_code",
         "STRING",
         mode="NULLABLE",
@@ -347,6 +402,81 @@ SCHEDULE_SCHEMA = (
                 mode="REQUIRED",
             ),
             bigquery.SchemaField(
+                "CIF_business_sector",
+                "STRING",
+                mode="REQUIRED",
+            ),
+            bigquery.SchemaField(
+                "CIF_course_indicator",
+                "INTEGER",
+                mode="REQUIRED",
+            ),
+            bigquery.SchemaField(
+                "CIF_headcode",
+                "STRING",
+                mode="REQUIRED",
+            ),
+            bigquery.SchemaField(
+                "CIF_train_category",
+                "STRING",
+                mode="REQUIRED",
+            ),
+            bigquery.SchemaField(
+                "CIF_service_branding",
+                "STRING",
+                mode="REQUIRED",
+            ),
+            bigquery.SchemaField(
+                "CIF_train_service_code",
+                "STRING",
+                mode="REQUIRED",
+            ),
+            bigquery.SchemaField(
+                "CIF_connection_indicator",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
+                "CIF_sleepers",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
+                "CIF_catering_code",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
+                "CIF_reservations",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
+                "CIF_operating_characteristics",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
+                "CIF_timing_load",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
+                "CIF_train_class",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
+                "CIF_power_type",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
+                "CIF_speed",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
                 "schedule_location",
                 "RECORD",
                 mode="REPEATED",
@@ -367,7 +497,62 @@ SCHEDULE_SCHEMA = (
                         mode="REQUIRED",
                     ),
                     bigquery.SchemaField(
+                        "tiploc_instance",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "platform",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "arrival",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
                         "departure",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "pass",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "public_arrival",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "public_departure",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "path",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "line",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "engineering_allowance",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "pathing_allowance",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "performance_allowance",
                         "STRING",
                         mode="NULLABLE",
                     ),

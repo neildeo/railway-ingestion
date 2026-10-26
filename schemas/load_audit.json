@@ -1,0 +1,74 @@
+[
+  {
+    "name": "load_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Unique sortable identifier for one physical load attempt."
+  },
+  {
+    "name": "source_feed",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Logical upstream feed being loaded, such as schedule, corpus, trust, or vstp."
+  },
+  {
+    "name": "record_family",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Logical record family loaded by this attempt, such as publication, tiploc, association, or schedule."
+  },
+  {
+    "name": "source_object",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "GCS object path containing the exact source data used by this load attempt."
+  },
+  {
+    "name": "source_generation",
+    "type": "INTEGER",
+    "mode": "REQUIRED",
+    "description": "GCS generation identifying the exact physical version of the source object."
+  },
+  {
+    "name": "publication_sequence",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Source publication sequence where available. Nullable because a load may fail before source metadata can be read."
+  },
+  {
+    "name": "extract_type",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Source extract type where available, for example full or update. Nullable because a load may fail before source metadata can be read."
+  },
+  {
+    "name": "status",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Terminal status of the load attempt. Expected values are SUCCEEDED or FAILED."
+  },
+  {
+    "name": "row_count",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Number of rows successfully committed by the load attempt. Null for failed attempts."
+  },
+  {
+    "name": "started_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "UTC timestamp at which the load attempt started."
+  },
+  {
+    "name": "finished_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "UTC timestamp at which the load attempt reached its terminal state."
+  },
+  {
+    "name": "error",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Error detail captured for a failed load attempt. Null for successful attempts."
+  }
+]
