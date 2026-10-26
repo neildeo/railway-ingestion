@@ -781,12 +781,6 @@ def test_load_schedule_shapes_publication_records(
         lambda **kwargs: iter([HEADER]),
     )
 
-    monkeypatch.setattr(
-        loader_main,
-        "generate_load_id",
-        lambda: "load-1",
-    )
-
     def fake_write_pending_batches(
         *,
         client,
@@ -805,12 +799,11 @@ def test_load_schedule_shapes_publication_records(
 
     load_id = load_schedule(
         config=config,
+        load_id="1234ABC",
         storage_client=storage_client,  # pyright: ignore[reportArgumentType]
         bigquery_client=bigquery_client,  # pyright: ignore[reportArgumentType]
         write_client=write_client,  # pyright: ignore[reportArgumentType]
     )
-
-    assert load_id == "load-1"
 
     assert bigquery_client.requested_table == (
         "test-project.raw.schedule_publications"
@@ -830,7 +823,6 @@ def test_load_schedule_shapes_publication_records(
 
     row = batches[0].to_pylist()[0]
 
-    assert row["load_id"] == "load-1"
     assert row["source_object"] == config.source_object
     assert (
         row["source_generation"]
@@ -877,12 +869,6 @@ def test_load_schedule_shapes_association_records(
         lambda **kwargs: iter(ASSOCIATION_RECORDS),
     )
 
-    monkeypatch.setattr(
-        loader_main,
-        "generate_load_id",
-        lambda: "load-1",
-    )
-
     def fake_write_pending_batches(
         *,
         client,
@@ -899,12 +885,11 @@ def test_load_schedule_shapes_association_records(
 
     load_id = load_schedule(
         config=config,
+        load_id="1234ABC",
         storage_client=storage_client,  # pyright: ignore[reportArgumentType]
         bigquery_client=bigquery_client,  # pyright: ignore[reportArgumentType]
         write_client=write_client,  # pyright: ignore[reportArgumentType]
     )
-
-    assert load_id == "load-1"
 
     rows = [
         row
@@ -913,11 +898,6 @@ def test_load_schedule_shapes_association_records(
     ]
 
     assert len(rows) == 2
-
-    assert all(
-        row["load_id"] == "load-1"
-        for row in rows
-    )
 
     assert rows[0]["main_train_uid"] == "C30123"
     assert rows[0]["assoc_train_uid"] == "C42949"
@@ -970,12 +950,6 @@ def test_load_schedule_shapes_and_batches_tiploc_records(
         lambda **kwargs: iter(TIPLOC_RECORDS),
     )
 
-    monkeypatch.setattr(
-        loader_main,
-        "generate_load_id",
-        lambda: "load-1",
-    )
-
     def fake_write_pending_batches(
         *,
         client,
@@ -994,12 +968,11 @@ def test_load_schedule_shapes_and_batches_tiploc_records(
 
     load_id = load_schedule(
         config=config,
+        load_id="1234ABC",
         storage_client=storage_client,  # pyright: ignore[reportArgumentType]
         bigquery_client=bigquery_client,  # pyright: ignore[reportArgumentType]
         write_client=write_client,  # pyright: ignore[reportArgumentType]
     )
-
-    assert load_id == "load-1"
 
     assert bigquery_client.requested_table == (
         "test-project.raw.schedule_tiplocs"
@@ -1027,7 +1000,7 @@ def test_load_schedule_shapes_and_batches_tiploc_records(
 
     assert rows == [
         {
-            "load_id": "load-1",
+            "load_id": "1234ABC",
             "source_object": config.source_object,
             "source_generation": (
                 config.source_generation
@@ -1043,7 +1016,7 @@ def test_load_schedule_shapes_and_batches_tiploc_records(
             "nalco": "308700",
         },
         {
-            "load_id": "load-1",
+            "load_id": "1234ABC",
             "source_object": config.source_object,
             "source_generation": (
                 config.source_generation
@@ -1059,7 +1032,7 @@ def test_load_schedule_shapes_and_batches_tiploc_records(
             "nalco": "314900",
         },
         {
-            "load_id": "load-1",
+            "load_id": "1234ABC",
             "source_object": config.source_object,
             "source_generation": (
                 config.source_generation
@@ -1114,18 +1087,13 @@ def test_load_schedule_reads_exact_source_metadata(
 
     monkeypatch.setattr(
         loader_main,
-        "generate_load_id",
-        lambda: "load-1",
-    )
-
-    monkeypatch.setattr(
-        loader_main,
         "write_pending_batches",
         lambda **kwargs: list(kwargs["batches"]),
     )
 
     load_schedule(
         config=config,
+        load_id="1234ABC",
         storage_client=storage_client,  # pyright: ignore[reportArgumentType]
         bigquery_client=bigquery_client,  # pyright: ignore[reportArgumentType]
         write_client=write_client,  # pyright: ignore[reportArgumentType]
@@ -1176,18 +1144,13 @@ def test_load_schedule_requests_configured_record_type(
 
     monkeypatch.setattr(
         loader_main,
-        "generate_load_id",
-        lambda: "load-1",
-    )
-
-    monkeypatch.setattr(
-        loader_main,
         "write_pending_batches",
         lambda **kwargs: list(kwargs["batches"]),
     )
 
     load_schedule(
         config=config,
+        load_id="1234ABC",
         storage_client=storage_client,  # pyright: ignore[reportArgumentType]
         bigquery_client=bigquery_client,  # pyright: ignore[reportArgumentType]
         write_client=write_client,  # pyright: ignore[reportArgumentType]
@@ -1236,12 +1199,6 @@ def test_load_schedule_uses_source_metadata_identity(
         lambda **kwargs: iter([HEADER]),
     )
 
-    monkeypatch.setattr(
-        loader_main,
-        "generate_load_id",
-        lambda: "load-1",
-    )
-
     def fake_write_pending_batches(
         *,
         client,
@@ -1258,6 +1215,7 @@ def test_load_schedule_uses_source_metadata_identity(
 
     load_schedule(
         config=config,
+        load_id="1234ABC",
         storage_client=storage_client,  # pyright: ignore[reportArgumentType]
         bigquery_client=bigquery_client,  # pyright: ignore[reportArgumentType]
         write_client=write_client,  # pyright: ignore[reportArgumentType]
@@ -1324,6 +1282,7 @@ def test_load_schedule_returns_load_id_for_empty_record_family(
 
     load_id = load_schedule(
         config=config,
+        load_id="load-empty",
         storage_client=storage_client,  # pyright: ignore[reportArgumentType]
         bigquery_client=bigquery_client,  # pyright: ignore[reportArgumentType]
         write_client=write_client,  # pyright: ignore[reportArgumentType]
@@ -1398,6 +1357,7 @@ def test_load_schedule_validates_schema_before_reading_source(
     with pytest.raises(SchemaMismatchError):
         load_schedule(
             config=config,
+            load_id="1234ABC",
             storage_client=storage_client,  # type: ignore
             bigquery_client=bigquery_client,  # type: ignore
             write_client=write_client,  # pyright: ignore[reportArgumentType]
@@ -1451,12 +1411,6 @@ def test_load_schedule_does_not_materialise_all_records_before_writing(
         lambda **kwargs: source_records(),
     )
 
-    monkeypatch.setattr(
-        loader_main,
-        "generate_load_id",
-        lambda: "load-1",
-    )
-
     written_batch: pa.RecordBatch | None = None
 
     def fake_write_pending_batches(
@@ -1481,12 +1435,12 @@ def test_load_schedule_does_not_materialise_all_records_before_writing(
 
     load_id = load_schedule(
         config=config,
+        load_id="1234ABC",
         storage_client=storage_client,  # pyright: ignore[reportArgumentType]
         bigquery_client=bigquery_client,  # pyright: ignore[reportArgumentType]
         write_client=write_client,  # pyright: ignore[reportArgumentType]
     )
 
-    assert load_id == "load-1"
     assert written_batch is not None
     assert written_batch.num_rows == 2
 
@@ -1528,12 +1482,6 @@ def test_load_schedule_shapes_schedule_records(
         lambda **kwargs: iter(SCHEDULE_RECORDS),
     )
 
-    monkeypatch.setattr(
-        loader_main,
-        "generate_load_id",
-        lambda: "load-1",
-    )
-
     def fake_write_pending_batches(
         *,
         client,
@@ -1552,12 +1500,11 @@ def test_load_schedule_shapes_schedule_records(
 
     load_id = load_schedule(
         config=config,
+        load_id="1234ABC",
         storage_client=storage_client,  # pyright: ignore[reportArgumentType]
         bigquery_client=bigquery_client,  # pyright: ignore[reportArgumentType]
         write_client=write_client,  # pyright: ignore[reportArgumentType]
     )
-
-    assert load_id == "load-1"
 
     assert bigquery_client.requested_table == (
         "test-project.raw.schedule_schedules"
@@ -1587,7 +1534,7 @@ def test_load_schedule_shapes_schedule_records(
 
     full_schedule = rows[0]
 
-    assert full_schedule["load_id"] == "load-1"
+    assert full_schedule["load_id"] == "1234ABC"
     assert (
         full_schedule["source_object"]
         == config.source_object

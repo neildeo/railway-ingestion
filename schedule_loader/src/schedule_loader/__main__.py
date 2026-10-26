@@ -18,6 +18,7 @@ ARROW_RECORD_BATCH_SIZE = 1000
 def load_schedule(
     *,
     config: LoadConfig,
+    load_id: str,
     storage_client: storage.Client,
     bigquery_client: bigquery.Client,
     write_client: bigquery_storage_v1.BigQueryWriteClient,
@@ -50,7 +51,7 @@ def load_schedule(
 
     # Generate load context
     load_context = LoadContext(
-        load_id=generate_load_id(),
+        load_id=load_id,
         source_object=config.source_object,
         source_generation=config.source_generation,
         publication_sequence=metadata.publication_sequence,

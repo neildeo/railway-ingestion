@@ -12,7 +12,7 @@ from google.cloud import (
     storage,
 )
 
-from schedule_loader.__main__ import load_schedule
+from schedule_loader.__main__ import generate_load_id, load_schedule
 from schedule_loader.config import LoadConfig
 from schedule_loader.source import RecordType
 
@@ -50,6 +50,8 @@ def test_load_publication_end_to_end() -> None:
         ),
     )
 
+    load_id = generate_load_id()
+
     storage_client = storage.Client(
         project=project,
     )
@@ -62,6 +64,7 @@ def test_load_publication_end_to_end() -> None:
 
     load_id = load_schedule(
         config=config,
+        load_id=load_id,
         storage_client=storage_client,
         bigquery_client=bigquery_client,
         write_client=write_client,
