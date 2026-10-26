@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Iterator
-from itertools import tee
+from itertools import chain
 
 import pyarrow as pa
 from google.cloud import bigquery_storage_v1
@@ -31,11 +31,19 @@ def write_pending_batches(
     # We need to peek the first batch to:
     # (a) get the schema without advancing the original iterator;
     # (b) check if batches is empty
-    batches, schema_iter = tee(batches, 2)
+    batches = iter(batches)
+
     try:
-        pa_schema = schema_iter.__next__().schema
-    except StopIteration:  # This means batches is empty, so we can just return
+        first_batch = next(batches)
+    except StopIteration:
         return
+
+    pa_schema = first_batch.schema
+
+    batches = chain(
+        (first_batch,),
+        batches,
+    )
 
     write_stream = client.create_write_stream(
         parent=table,

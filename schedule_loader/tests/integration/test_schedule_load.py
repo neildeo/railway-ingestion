@@ -172,43 +172,40 @@ def test_load_schedules_end_to_end() -> None:
         assert normal.atoc_code == "NT"
         assert normal.applicable_timetable == "Y"
 
-        assert (
-            normal.new_schedule_segment.traction_class
-            == ""
-        )
-        assert normal.new_schedule_segment.uic_code == ""
+        assert normal.new_schedule_segment["traction_class"] == ""
+        assert normal.new_schedule_segment["uic_code"] == ""
 
         segment = normal.schedule_segment
 
-        assert segment.signalling_id == "5H63"
-        assert segment.CIF_train_category == "EE"
+        assert segment["signalling_id"] == "5H63"
+        assert segment["CIF_train_category"] == "EE"
         assert (
-            segment.CIF_train_service_code
+            segment["CIF_train_service_code"]
             == "22974000"
         )
 
-        locations = segment.schedule_location
+        locations = segment["schedule_location"]
 
         assert len(locations) == 3
 
-        assert locations[0].location_type == "LO"
-        assert locations[0].record_identity == "LO"
-        assert locations[0].tiploc_code == "CARLILE"
-        assert locations[0].departure == "0905"
-        assert locations[0].arrival is None
+        assert locations[0]["location_type"] == "LO"
+        assert locations[0]["record_identity"] == "LO"
+        assert locations[0]["tiploc_code"] == "CARLILE"
+        assert locations[0]["departure"] == "0905"
+        assert locations[0]["arrival"] is None
 
-        assert locations[1].location_type == "LI"
-        assert locations[1].record_identity == "LI"
-        assert locations[1].tiploc_code == "CARLNEC"
-        assert locations[1].arrival == "0908"
-        assert locations[1].departure == "0911"
+        assert locations[1]["location_type"] == "LI"
+        assert locations[1]["record_identity"] == "LI"
+        assert locations[1]["tiploc_code"] == "CARLNEC"
+        assert locations[1]["arrival"] == "0908"
+        assert locations[1]["departure"] == "0911"
 
-        assert locations[2].location_type == "LT"
-        assert locations[2].record_identity == "LT"
-        assert locations[2].tiploc_code == "CARLILE"
-        assert locations[2].tiploc_instance == "2"
-        assert locations[2].arrival == "0914"
-        assert locations[2].departure is None
+        assert locations[2]["location_type"] == "LT"
+        assert locations[2]["record_identity"] == "LT"
+        assert locations[2]["tiploc_code"] == "CARLILE"
+        assert locations[2]["tiploc_instance"] == "2"
+        assert locations[2]["arrival"] == "0914"
+        assert locations[2]["departure"] is None
 
         cancellation_rows = list(
             bigquery_client.query(
@@ -259,7 +256,7 @@ def test_load_schedules_end_to_end() -> None:
         assert cancellation.schedule_segment is not None
         assert cancellation.location_count == 0
         assert (
-            cancellation.schedule_segment.schedule_location
+            cancellation.schedule_segment["schedule_location"]
             == []
         )
 
