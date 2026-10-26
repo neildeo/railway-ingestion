@@ -26,7 +26,7 @@ TABLES: dict[RecordType, str] = {
 
 # Mapping from convenient record type names to names used in extracts
 RECORD_TYPE_NAMES: dict[str, str] = {
-    "association": "AssociationV1",
+    "association": "JsonAssociationV1",
     "publication": "JsonTimetableV1",
     "schedule": "JsonScheduleV1",
     "tiploc": "TiplocV1",
