@@ -170,6 +170,271 @@ PUBLICATION_SCHEMA = (
 )
 
 
+SCHEDULE_SCHEMA = (
+    bigquery.SchemaField(
+        "load_id",
+        "STRING",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "source_object",
+        "STRING",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "source_generation",
+        "INTEGER",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "publication_sequence",
+        "INTEGER",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "extract_type",
+        "STRING",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "transaction_type",
+        "STRING",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "CIF_stp_indicator",
+        "STRING",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "CIF_train_uid",
+        "STRING",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "schedule_start_date",
+        "DATE",
+        mode="REQUIRED",
+    ),
+    bigquery.SchemaField(
+        "schedule_end_date",
+        "DATE",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
+        "CIF_bank_holiday_running",
+        "STRING",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
+        "schedule_days_runs",
+        "STRING",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
+        "train_status",
+        "STRING",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
+        "atoc_code",
+        "STRING",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
+        "applicable_timetable",
+        "STRING",
+        mode="NULLABLE",
+    ),
+    bigquery.SchemaField(
+        "new_schedule_segment",
+        "RECORD",
+        mode="NULLABLE",
+        fields=(
+            bigquery.SchemaField(
+                "traction_class",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
+                "uic_code",
+                "STRING",
+                mode="NULLABLE",
+            ),
+        ),
+    ),
+    bigquery.SchemaField(
+        "schedule_segment",
+        "RECORD",
+        mode="NULLABLE",
+        fields=(
+            bigquery.SchemaField(
+                "signalling_id",
+                "STRING",
+                mode="REQUIRED",
+            ),
+            bigquery.SchemaField(
+                "CIF_business_sector",
+                "STRING",
+                mode="REQUIRED",
+            ),
+            bigquery.SchemaField(
+                "CIF_course_indicator",
+                "INTEGER",
+                mode="REQUIRED",
+            ),
+            bigquery.SchemaField(
+                "CIF_headcode",
+                "STRING",
+                mode="REQUIRED",
+            ),
+            bigquery.SchemaField(
+                "CIF_train_category",
+                "STRING",
+                mode="REQUIRED",
+            ),
+            bigquery.SchemaField(
+                "CIF_service_branding",
+                "STRING",
+                mode="REQUIRED",
+            ),
+            bigquery.SchemaField(
+                "CIF_train_service_code",
+                "STRING",
+                mode="REQUIRED",
+            ),
+            bigquery.SchemaField(
+                "CIF_connection_indicator",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
+                "CIF_sleepers",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
+                "CIF_catering_code",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
+                "CIF_reservations",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
+                "CIF_operating_characteristics",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
+                "CIF_timing_load",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
+                "CIF_train_class",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
+                "CIF_power_type",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
+                "CIF_speed",
+                "STRING",
+                mode="NULLABLE",
+            ),
+            bigquery.SchemaField(
+                "schedule_location",
+                "RECORD",
+                mode="REPEATED",
+                fields=(
+                    bigquery.SchemaField(
+                        "location_type",
+                        "STRING",
+                        mode="REQUIRED",
+                    ),
+                    bigquery.SchemaField(
+                        "record_identity",
+                        "STRING",
+                        mode="REQUIRED",
+                    ),
+                    bigquery.SchemaField(
+                        "tiploc_code",
+                        "STRING",
+                        mode="REQUIRED",
+                    ),
+                    bigquery.SchemaField(
+                        "tiploc_instance",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "platform",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "arrival",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "departure",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "pass",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "public_arrival",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "public_departure",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "path",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "line",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "engineering_allowance",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "pathing_allowance",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                    bigquery.SchemaField(
+                        "performance_allowance",
+                        "STRING",
+                        mode="NULLABLE",
+                    ),
+                ),
+            ),
+        ),
+    ),
+)
+
+
 TIPLOC_SCHEMA = (
     bigquery.SchemaField(
         "load_id",
@@ -283,6 +548,86 @@ ASSOCIATION_RECORDS = [
     },
 ]
 
+SCHEDULE_RECORDS = [
+    {
+        "transaction_type": "Create",
+        "CIF_stp_indicator": "P",
+        "CIF_train_uid": "C00038",
+        "schedule_start_date": "2026-05-17",
+        "schedule_end_date": "2026-11-08",
+        "CIF_bank_holiday_running": None,
+        "schedule_days_runs": "0000001",
+        "train_status": "P",
+        "atoc_code": "NT",
+        "applicable_timetable": "Y",
+        "new_schedule_segment": {
+            "traction_class": "",
+            "uic_code": "",
+        },
+        "schedule_segment": {
+            "signalling_id": "5H63",
+            "CIF_train_category": "EE",
+            "CIF_headcode": "",
+            "CIF_course_indicator": 1,
+            "CIF_train_service_code": "22974000",
+            "CIF_business_sector": "??",
+            "CIF_power_type": "DMU",
+            "CIF_timing_load": "S",
+            "CIF_speed": "075",
+            "CIF_operating_characteristics": None,
+            "CIF_train_class": None,
+            "CIF_sleepers": None,
+            "CIF_reservations": None,
+            "CIF_connection_indicator": None,
+            "CIF_catering_code": None,
+            "CIF_service_branding": "",
+            "schedule_location": [
+                {
+                    "location_type": "LO",
+                    "record_identity": "LO",
+                    "tiploc_code": "CARLILE",
+                    "tiploc_instance": None,
+                    "departure": "0905",
+                    "public_departure": None,
+                    "platform": "CLS",
+                    "line": None,
+                    "engineering_allowance": None,
+                    "pathing_allowance": None,
+                    "performance_allowance": None,
+                }
+            ],
+        },
+    },
+    {
+        "transaction_type": "Create",
+        "CIF_stp_indicator": "C",
+        "CIF_train_uid": "C18018",
+        "schedule_start_date": "2026-05-17",
+        "schedule_end_date": "2026-12-06",
+        "CIF_bank_holiday_running": None,
+        "schedule_days_runs": "0000001",
+        "train_status": " ",
+        "schedule_segment": {
+            "signalling_id": "    ",
+            "CIF_train_category": "",
+            "CIF_headcode": "",
+            "CIF_course_indicator": 1,
+            "CIF_train_service_code": "        ",
+            "CIF_business_sector": "??",
+            "CIF_power_type": None,
+            "CIF_timing_load": None,
+            "CIF_speed": None,
+            "CIF_operating_characteristics": None,
+            "CIF_train_class": None,
+            "CIF_sleepers": None,
+            "CIF_reservations": None,
+            "CIF_connection_indicator": None,
+            "CIF_catering_code": None,
+            "CIF_service_branding": "",
+        },
+    },
+]
+
 TIPLOC_RECORDS = [
     {
         "transaction_type": "Create",
@@ -349,6 +694,24 @@ def _publication_config() -> LoadConfig:
         table_name="schedule_publications",
         schema_path=Path(
             "/schemas/schedule_publications.json"
+        ),
+    )
+
+
+def _schedule_config() -> LoadConfig:
+    return LoadConfig(
+        source_bucket="railway-raw",
+        source_object=(
+            "schedules/full/sequence=5251/"
+            "schedules.json.gz"
+        ),
+        source_generation=123456789,
+        project="test-project",
+        dataset="raw",
+        record_type=RecordType.SCHEDULE,
+        table_name="schedule_schedules",
+        schema_path=Path(
+            "/schemas/schedule_schedules.json"
         ),
     )
 
@@ -1126,3 +1489,173 @@ def test_load_schedule_does_not_materialise_all_records_before_writing(
     assert load_id == "load-1"
     assert written_batch is not None
     assert written_batch.num_rows == 2
+
+
+def test_load_schedule_shapes_schedule_records(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _schedule_config()
+
+    storage_client = object()
+    write_client = object()
+    bigquery_client = FakeBigQueryClient(
+        SCHEDULE_SCHEMA,
+    )
+
+    written: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        loader_main,
+        "ARROW_RECORD_BATCH_SIZE",
+        1,
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "load_bigquery_schema",
+        lambda path: SCHEDULE_SCHEMA,
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "read_schedule_metadata",
+        lambda **kwargs: SOURCE_METADATA,
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "iter_schedule_records",
+        lambda **kwargs: iter(SCHEDULE_RECORDS),
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "generate_load_id",
+        lambda: "load-1",
+    )
+
+    def fake_write_pending_batches(
+        *,
+        client,
+        table: str,
+        batches,
+    ) -> None:
+        written["client"] = client
+        written["table"] = table
+        written["batches"] = list(batches)
+
+    monkeypatch.setattr(
+        loader_main,
+        "write_pending_batches",
+        fake_write_pending_batches,
+    )
+
+    load_id = load_schedule(
+        config=config,
+        storage_client=storage_client,  # pyright: ignore[reportArgumentType]
+        bigquery_client=bigquery_client,  # pyright: ignore[reportArgumentType]
+        write_client=write_client,  # pyright: ignore[reportArgumentType]
+    )
+
+    assert load_id == "load-1"
+
+    assert bigquery_client.requested_table == (
+        "test-project.raw.schedule_schedules"
+    )
+
+    assert written["client"] is write_client
+    assert written["table"] == (
+        "projects/test-project/"
+        "datasets/raw/"
+        "tables/schedule_schedules"
+    )
+
+    batches: list[pa.RecordBatch] = written["batches"]  # type: ignore
+
+    assert [
+        batch.num_rows
+        for batch in batches
+    ] == [1, 1]
+
+    rows = [
+        row
+        for batch in batches
+        for row in batch.to_pylist()
+    ]
+
+    assert len(rows) == 2
+
+    full_schedule = rows[0]
+
+    assert full_schedule["load_id"] == "load-1"
+    assert (
+        full_schedule["source_object"]
+        == config.source_object
+    )
+    assert (
+        full_schedule["source_generation"]
+        == config.source_generation
+    )
+    assert full_schedule["publication_sequence"] == 5251
+    assert full_schedule["extract_type"] == "full"
+
+    assert full_schedule["CIF_train_uid"] == "C00038"
+    assert (
+        full_schedule["schedule_start_date"]
+        == date(2026, 5, 17)
+    )
+    assert (
+        full_schedule["schedule_end_date"]
+        == date(2026, 11, 8)
+    )
+
+    assert full_schedule["new_schedule_segment"] == {
+        "traction_class": "",
+        "uic_code": "",
+    }
+
+    segment = full_schedule["schedule_segment"]
+
+    assert segment is not None
+    assert segment["signalling_id"] == "5H63"
+
+    assert segment["schedule_location"] == [
+        {
+            "location_type": "LO",
+            "record_identity": "LO",
+            "tiploc_code": "CARLILE",
+            "tiploc_instance": None,
+            "platform": "CLS",
+            "arrival": None,
+            "departure": "0905",
+            "pass": None,
+            "public_arrival": None,
+            "public_departure": None,
+            "path": None,
+            "line": None,
+            "engineering_allowance": None,
+            "pathing_allowance": None,
+            "performance_allowance": None,
+        }
+    ]
+
+    cancellation = rows[1]
+
+    assert cancellation["CIF_train_uid"] == "C18018"
+    assert cancellation["atoc_code"] is None
+    assert cancellation["applicable_timetable"] is None
+    assert cancellation["new_schedule_segment"] is None
+
+    cancellation_segment = cancellation[
+        "schedule_segment"
+    ]
+
+    assert cancellation_segment is not None
+
+    # This is the important repeated-field contract:
+    # absent source schedule_location becomes an empty
+    # Arrow/BigQuery-compatible list, not None.
+    assert (
+        cancellation_segment["schedule_location"]
+        == []
+    )

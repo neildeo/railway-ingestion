@@ -7,6 +7,7 @@ from schedule_loader.row import (
     association_row,
     attach_load_context,
     publication_row,
+    schedule_row,
     tiploc_row,
 )
 
@@ -221,3 +222,273 @@ def test_association_row_maps_optional_fields_when_absent() -> None:
         "category": None,
         "date_indicator": None,
     }
+
+
+def test_schedule_row_maps_full_schedule() -> None:
+    record = {
+        "transaction_type": "Create",
+        "CIF_stp_indicator": "P",
+        "CIF_train_uid": "C00038",
+        "schedule_start_date": "2026-05-17",
+        "schedule_end_date": "2026-11-08",
+        "CIF_bank_holiday_running": None,
+        "schedule_days_runs": "0000001",
+        "train_status": "P",
+        "atoc_code": "NT",
+        "applicable_timetable": "Y",
+        "new_schedule_segment": {
+            "traction_class": "",
+            "uic_code": "",
+        },
+        "schedule_segment": {
+            "signalling_id": "5H63",
+            "CIF_train_category": "EE",
+            "CIF_headcode": "",
+            "CIF_course_indicator": 1,
+            "CIF_train_service_code": "22974000",
+            "CIF_business_sector": "??",
+            "CIF_power_type": "DMU",
+            "CIF_timing_load": "S",
+            "CIF_speed": "075",
+            "CIF_operating_characteristics": None,
+            "CIF_train_class": None,
+            "CIF_sleepers": None,
+            "CIF_reservations": None,
+            "CIF_connection_indicator": None,
+            "CIF_catering_code": None,
+            "CIF_service_branding": "",
+            "schedule_location": [
+                {
+                    "location_type": "LO",
+                    "record_identity": "LO",
+                    "tiploc_code": "CARLILE",
+                    "tiploc_instance": None,
+                    "departure": "0905",
+                    "public_departure": None,
+                    "platform": "CLS",
+                    "line": None,
+                    "engineering_allowance": None,
+                    "pathing_allowance": None,
+                    "performance_allowance": None,
+                },
+                {
+                    "location_type": "LI",
+                    "record_identity": "LI",
+                    "tiploc_code": "CARLNEC",
+                    "tiploc_instance": None,
+                    "departure": "0911",
+                    "public_departure": None,
+                    "platform": None,
+                    "line": None,
+                    "engineering_allowance": None,
+                    "pathing_allowance": None,
+                    "performance_allowance": None,
+                    "arrival": "0908",
+                    "public_arrival": None,
+                    "pass": None,
+                    "path": None,
+                },
+                {
+                    "location_type": "LT",
+                    "record_identity": "LT",
+                    "tiploc_code": "CARLILE",
+                    "tiploc_instance": "2",
+                    "platform": "6",
+                    "arrival": "0914",
+                    "public_arrival": None,
+                    "path": None,
+                },
+            ],
+        },
+    }
+
+    result = schedule_row(record)
+
+    assert result == {
+        "transaction_type": "Create",
+        "CIF_stp_indicator": "P",
+        "CIF_train_uid": "C00038",
+        "schedule_start_date": date(2026, 5, 17),
+        "schedule_end_date": date(2026, 11, 8),
+        "CIF_bank_holiday_running": None,
+        "schedule_days_runs": "0000001",
+        "train_status": "P",
+        "atoc_code": "NT",
+        "applicable_timetable": "Y",
+        "new_schedule_segment": {
+            "traction_class": "",
+            "uic_code": "",
+        },
+        "schedule_segment": {
+            "signalling_id": "5H63",
+            "CIF_business_sector": "??",
+            "CIF_course_indicator": 1,
+            "CIF_headcode": "",
+            "CIF_train_category": "EE",
+            "CIF_service_branding": "",
+            "CIF_train_service_code": "22974000",
+            "CIF_connection_indicator": None,
+            "CIF_sleepers": None,
+            "CIF_catering_code": None,
+            "CIF_reservations": None,
+            "CIF_operating_characteristics": None,
+            "CIF_timing_load": "S",
+            "CIF_train_class": None,
+            "CIF_power_type": "DMU",
+            "CIF_speed": "075",
+            "schedule_location": [
+                {
+                    "location_type": "LO",
+                    "record_identity": "LO",
+                    "tiploc_code": "CARLILE",
+                    "tiploc_instance": None,
+                    "platform": "CLS",
+                    "arrival": None,
+                    "departure": "0905",
+                    "pass": None,
+                    "public_arrival": None,
+                    "public_departure": None,
+                    "path": None,
+                    "line": None,
+                    "engineering_allowance": None,
+                    "pathing_allowance": None,
+                    "performance_allowance": None,
+                },
+                {
+                    "location_type": "LI",
+                    "record_identity": "LI",
+                    "tiploc_code": "CARLNEC",
+                    "tiploc_instance": None,
+                    "platform": None,
+                    "arrival": "0908",
+                    "departure": "0911",
+                    "pass": None,
+                    "public_arrival": None,
+                    "public_departure": None,
+                    "path": None,
+                    "line": None,
+                    "engineering_allowance": None,
+                    "pathing_allowance": None,
+                    "performance_allowance": None,
+                },
+                {
+                    "location_type": "LT",
+                    "record_identity": "LT",
+                    "tiploc_code": "CARLILE",
+                    "tiploc_instance": "2",
+                    "platform": "6",
+                    "arrival": "0914",
+                    "departure": None,
+                    "pass": None,
+                    "public_arrival": None,
+                    "public_departure": None,
+                    "path": None,
+                    "line": None,
+                    "engineering_allowance": None,
+                    "pathing_allowance": None,
+                    "performance_allowance": None,
+                },
+            ],
+        },
+    }
+
+
+def test_schedule_row_maps_missing_schedule_locations_to_empty_list() -> None:
+    record = {
+        "transaction_type": "Create",
+        "CIF_stp_indicator": "C",
+        "CIF_train_uid": "C18018",
+        "schedule_start_date": "2026-05-17",
+        "schedule_end_date": "2026-12-06",
+        "CIF_bank_holiday_running": None,
+        "schedule_days_runs": "0000001",
+        "train_status": " ",
+        "schedule_segment": {
+            "signalling_id": "    ",
+            "CIF_train_category": "",
+            "CIF_headcode": "",
+            "CIF_course_indicator": 1,
+            "CIF_train_service_code": "        ",
+            "CIF_business_sector": "??",
+            "CIF_power_type": None,
+            "CIF_timing_load": None,
+            "CIF_speed": None,
+            "CIF_operating_characteristics": None,
+            "CIF_train_class": None,
+            "CIF_sleepers": None,
+            "CIF_reservations": None,
+            "CIF_connection_indicator": None,
+            "CIF_catering_code": None,
+            "CIF_service_branding": "",
+        },
+    }
+
+    result = schedule_row(record)
+
+    assert result["atoc_code"] is None
+    assert result["applicable_timetable"] is None
+    assert result["new_schedule_segment"] is None
+    assert result["schedule_segment"] is not None
+    assert (
+        result["schedule_segment"]["schedule_location"]
+        == []
+    )
+
+
+def test_schedule_row_preserves_explicit_empty_schedule_locations() -> None:
+    record = {
+        "transaction_type": "Create",
+        "CIF_stp_indicator": "C",
+        "CIF_train_uid": "C18018",
+        "schedule_start_date": "2026-05-17",
+        "schedule_end_date": "2026-12-06",
+        "CIF_bank_holiday_running": None,
+        "schedule_days_runs": "0000001",
+        "train_status": " ",
+        "schedule_segment": {
+            "signalling_id": "    ",
+            "CIF_train_category": "",
+            "CIF_headcode": "",
+            "CIF_course_indicator": 1,
+            "CIF_train_service_code": "        ",
+            "CIF_business_sector": "??",
+            "CIF_power_type": None,
+            "CIF_timing_load": None,
+            "CIF_speed": None,
+            "CIF_operating_characteristics": None,
+            "CIF_train_class": None,
+            "CIF_sleepers": None,
+            "CIF_reservations": None,
+            "CIF_connection_indicator": None,
+            "CIF_catering_code": None,
+            "CIF_service_branding": "",
+            "schedule_location": [],
+        },
+    }
+
+    result = schedule_row(record)
+
+    assert result["schedule_segment"] is not None
+    assert (
+        result["schedule_segment"]["schedule_location"]
+        == []
+    )
+
+
+def test_schedule_row_maps_missing_schedule_segment_to_none() -> None:
+    record = {
+        "transaction_type": "Delete",
+        "CIF_stp_indicator": "P",
+        "CIF_train_uid": "C00038",
+        "schedule_start_date": "2026-05-17",
+    }
+
+    result = schedule_row(record)
+
+    assert result["schedule_segment"] is None
+    assert result["new_schedule_segment"] is None
+    assert result["schedule_end_date"] is None
+    assert result["schedule_days_runs"] is None
+    assert result["train_status"] is None
+    assert result["atoc_code"] is None
+    assert result["applicable_timetable"] is None
