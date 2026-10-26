@@ -2,6 +2,7 @@ from __future__ import annotations
 from google.cloud import bigquery, bigquery_storage_v1, storage
 from datetime import datetime, timezone
 import secrets
+from functools import partial
 
 from schedule_loader.config import LoadConfig
 from schedule_loader.schema import load_bigquery_schema, assert_schemas_equal
@@ -68,14 +69,15 @@ def load_schedule(
     # Convert to rows object and attach load context
     match config.record_type:
         case RecordType.PUBLICATION:
-            rows = [publication_row(r) for r in records]
+            rows = map(publication_row, records)
         case RecordType.TIPLOC:
-            rows = [tiploc_row(r) for r in records]
+            rows = map(tiploc_row, records)
         case _:
             raise NotImplementedError(
                 f"Record type {config.record_type} not recognised")
-    rows_with_ctx = [attach_load_context(
-        r, context=load_context) for r in rows]
+
+    attach_ctx = partial(attach_load_context, context=load_context)
+    rows_with_ctx = map(attach_ctx, rows)
 
     # Prepare RecordBatch for BQ write
     # Already confirmed the local schema matches the landing table
