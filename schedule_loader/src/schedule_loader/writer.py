@@ -1,10 +1,20 @@
 from __future__ import annotations
+from typing import Iterator
 
 import pyarrow as pa
 from google.cloud import bigquery_storage_v1
 from google.cloud.bigquery_storage_v1 import types
 from google.cloud.bigquery_storage_v1.writer import AppendRowsStream
 from google.protobuf import wrappers_pb2
+
+
+def write_pending_batches(
+    *,
+    client: bigquery_storage_v1.BigQueryWriteClient,
+    table: str,
+    batches: Iterator[pa.RecordBatch]
+):
+    raise NotImplementedError
 
 
 def write_pending_batch(
