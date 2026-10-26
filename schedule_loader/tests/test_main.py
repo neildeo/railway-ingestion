@@ -172,6 +172,15 @@ TIPLOC_RECORDS = [
         "tps_description": "READING",
         "nalco": "314900",
     },
+    {
+        "transaction_type": "Create",
+        "tiploc_code": "OXFD",
+        "tps_description": "OXFORD",
+        "description": "OXFORD",
+        "crs_code": "OXF",
+        "stanox": "31105",
+        "nalco": "311500",
+    },
 ]
 
 
@@ -270,20 +279,20 @@ def test_load_schedule_shapes_publication_records(
         lambda: "load-1",
     )
 
-    def fake_write_pending_batch(
+    def fake_write_pending_batches(
         *,
         client,
         table: str,
-        batch: pa.RecordBatch,
+        batches,
     ) -> None:
         written["client"] = client
         written["table"] = table
-        written["batch"] = batch
+        written["batches"] = list(batches)
 
     monkeypatch.setattr(
         loader_main,
-        "write_pending_batch",
-        fake_write_pending_batch,
+        "write_pending_batches",
+        fake_write_pending_batches,
     )
 
     load_id = load_schedule(
@@ -306,11 +315,12 @@ def test_load_schedule_shapes_publication_records(
         "tables/schedule_publications"
     )
 
-    batch: pa.RecordBatch = written["batch"]
+    batches: list[pa.RecordBatch] = written["batches"]  # type: ignore
 
-    assert batch.num_rows == 1
+    assert len(batches) == 1
+    assert batches[0].num_rows == 1
 
-    row = batch.to_pylist()[0]
+    row = batches[0].to_pylist()[0]
 
     assert row["load_id"] == "load-1"
     assert row["source_object"] == config.source_object
@@ -328,7 +338,7 @@ def test_load_schedule_shapes_publication_records(
     assert row["owner"] == "Network Rail"
 
 
-def test_load_schedule_shapes_tiploc_records(
+def test_load_schedule_shapes_and_batches_tiploc_records(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _tiploc_config()
@@ -340,6 +350,12 @@ def test_load_schedule_shapes_tiploc_records(
     )
 
     written: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        loader_main,
+        "BATCH_SIZE",
+        2,
+    )
 
     monkeypatch.setattr(
         loader_main,
@@ -365,20 +381,20 @@ def test_load_schedule_shapes_tiploc_records(
         lambda: "load-1",
     )
 
-    def fake_write_pending_batch(
+    def fake_write_pending_batches(
         *,
         client,
         table: str,
-        batch: pa.RecordBatch,
+        batches,
     ) -> None:
         written["client"] = client
         written["table"] = table
-        written["batch"] = batch
+        written["batches"] = list(batches)
 
     monkeypatch.setattr(
         loader_main,
-        "write_pending_batch",
-        fake_write_pending_batch,
+        "write_pending_batches",
+        fake_write_pending_batches,
     )
 
     load_id = load_schedule(
@@ -401,11 +417,20 @@ def test_load_schedule_shapes_tiploc_records(
         "tables/schedule_tiplocs"
     )
 
-    batch: pa.RecordBatch = written["batch"]
+    batches: list[pa.RecordBatch] = written["batches"]  # type: ignore
 
-    assert batch.num_rows == 2
+    assert [
+        batch.num_rows
+        for batch in batches
+    ] == [2, 1]
 
-    assert batch.to_pylist() == [
+    rows = [
+        row
+        for batch in batches
+        for row in batch.to_pylist()
+    ]
+
+    assert rows == [
         {
             "load_id": "load-1",
             "source_object": config.source_object,
@@ -437,6 +462,22 @@ def test_load_schedule_shapes_tiploc_records(
             "crs_code": None,
             "stanox": None,
             "nalco": "314900",
+        },
+        {
+            "load_id": "load-1",
+            "source_object": config.source_object,
+            "source_generation": (
+                config.source_generation
+            ),
+            "publication_sequence": 5251,
+            "extract_type": "full",
+            "transaction_type": "Create",
+            "tiploc_code": "OXFD",
+            "tps_description": "OXFORD",
+            "description": "OXFORD",
+            "crs_code": "OXF",
+            "stanox": "31105",
+            "nalco": "311500",
         },
     ]
 
@@ -484,8 +525,8 @@ def test_load_schedule_reads_exact_source_metadata(
 
     monkeypatch.setattr(
         loader_main,
-        "write_pending_batch",
-        lambda **kwargs: None,
+        "write_pending_batches",
+        lambda **kwargs: list(kwargs["batches"]),
     )
 
     load_schedule(
@@ -546,8 +587,8 @@ def test_load_schedule_requests_configured_record_type(
 
     monkeypatch.setattr(
         loader_main,
-        "write_pending_batch",
-        lambda **kwargs: None,
+        "write_pending_batches",
+        lambda **kwargs: list(kwargs["batches"]),
     )
 
     load_schedule(
@@ -577,7 +618,7 @@ def test_load_schedule_uses_source_metadata_identity(
         PUBLICATION_SCHEMA,
     )
 
-    written_batch: pa.RecordBatch | None = None
+    written_batches: list[pa.RecordBatch] = []
 
     monkeypatch.setattr(
         loader_main,
@@ -606,19 +647,18 @@ def test_load_schedule_uses_source_metadata_identity(
         lambda: "load-1",
     )
 
-    def fake_write_pending_batch(
+    def fake_write_pending_batches(
         *,
         client,
         table,
-        batch,
+        batches,
     ) -> None:
-        nonlocal written_batch
-        written_batch = batch
+        written_batches.extend(batches)
 
     monkeypatch.setattr(
         loader_main,
-        "write_pending_batch",
-        fake_write_pending_batch,
+        "write_pending_batches",
+        fake_write_pending_batches,
     )
 
     load_schedule(
@@ -628,12 +668,74 @@ def test_load_schedule_uses_source_metadata_identity(
         write_client=write_client,  # pyright: ignore[reportArgumentType]
     )
 
-    assert written_batch is not None
+    assert len(written_batches) == 1
 
-    row = written_batch.to_pylist()[0]
+    row = written_batches[0].to_pylist()[0]
 
     assert row["publication_sequence"] == 7777
     assert row["extract_type"] == "update"
+
+
+def test_load_schedule_returns_load_id_for_empty_record_family(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _tiploc_config()
+
+    storage_client = object()
+    write_client = object()
+    bigquery_client = FakeBigQueryClient(
+        TIPLOC_SCHEMA,
+    )
+
+    written_batches: list[pa.RecordBatch] = []
+
+    monkeypatch.setattr(
+        loader_main,
+        "load_bigquery_schema",
+        lambda path: TIPLOC_SCHEMA,
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "read_schedule_metadata",
+        lambda **kwargs: SOURCE_METADATA,
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "iter_schedule_records",
+        lambda **kwargs: iter([]),
+    )
+
+    monkeypatch.setattr(
+        loader_main,
+        "generate_load_id",
+        lambda: "load-empty",
+    )
+
+    def fake_write_pending_batches(
+        *,
+        client,
+        table,
+        batches,
+    ) -> None:
+        written_batches.extend(batches)
+
+    monkeypatch.setattr(
+        loader_main,
+        "write_pending_batches",
+        fake_write_pending_batches,
+    )
+
+    load_id = load_schedule(
+        config=config,
+        storage_client=storage_client,  # pyright: ignore[reportArgumentType]
+        bigquery_client=bigquery_client,  # pyright: ignore[reportArgumentType]
+        write_client=write_client,  # pyright: ignore[reportArgumentType]
+    )
+
+    assert load_id == "load-empty"
+    assert written_batches == []
 
 
 def test_load_schedule_validates_schema_before_reading_source(
@@ -688,14 +790,14 @@ def test_load_schedule_validates_schema_before_reading_source(
         fake_iter_schedule_records,
     )
 
-    def fake_write_pending_batch(**kwargs):
+    def fake_write_pending_batches(**kwargs):
         nonlocal writer_was_called
         writer_was_called = True
 
     monkeypatch.setattr(
         loader_main,
-        "write_pending_batch",
-        fake_write_pending_batch,
+        "write_pending_batches",
+        fake_write_pending_batches,
     )
 
     with pytest.raises(SchemaMismatchError):

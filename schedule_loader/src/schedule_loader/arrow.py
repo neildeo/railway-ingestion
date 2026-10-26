@@ -42,15 +42,6 @@ def iter_rows_as_arrow_batches(
         )
 
 
-def batch_rows_as_arrow(rows: list[dict[str, Any]], bq_schema: Sequence[bigquery.SchemaField]) -> pa.RecordBatch:
-    arrow_schema = bigquery_to_arrow_schema(bq_schema)
-
-    return pa.RecordBatch.from_pylist(
-        rows,
-        schema=arrow_schema,
-    )
-
-
 def _bigquery_to_arrow_field(
     field: bigquery.SchemaField,
 ) -> pa.Field:
