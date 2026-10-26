@@ -12,7 +12,7 @@ import json
 class RecordType(StrEnum):
     PUBLICATION = "JsonTimetableV1"
     TIPLOC = "TiplocV1"
-    ASSOCIATION = "AssociationV1"
+    ASSOCIATION = "JsonAssociationV1"
     SCHEDULE = "JsonScheduleV1"
 
 
