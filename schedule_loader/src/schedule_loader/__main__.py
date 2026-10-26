@@ -57,7 +57,7 @@ def load_schedule(
         extract_type=metadata.extract_type,
     )
 
-    # Get header
+    # Get records from bucket
     records = iter_schedule_records(
         client=storage_client,
         bucket_name=config.source_bucket,
@@ -111,7 +111,7 @@ def main() -> None:
     """
     Load one SCHEDULE record family from an exact immutable source object.
 
-    Phase 1 implements publications only.
+    Phase 2 implements publications and TIPLOCs.
     """
     raise NotImplementedError
 
