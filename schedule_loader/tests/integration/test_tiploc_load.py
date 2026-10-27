@@ -45,7 +45,7 @@ def test_load_tiplocs_end_to_end() -> None:
         table_name="schedule_tiplocs",
         schema_path=(
             repo_root
-            / "schedule_schemas"
+            / "schemas"
             / "schedule_tiplocs.json"
         ),
     )

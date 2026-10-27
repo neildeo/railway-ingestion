@@ -45,7 +45,7 @@ def test_load_publication_end_to_end() -> None:
         table_name="schedule_publications",
         schema_path=(
             repo_root
-            / "schedule_schemas"
+            / "schemas"
             / "schedule_publications.json"
         ),
     )
