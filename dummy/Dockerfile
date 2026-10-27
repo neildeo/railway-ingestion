@@ -2,8 +2,8 @@ FROM python:3.14-slim
 
 WORKDIR /app
 
-COPY pyproject.toml .
-COPY src ./src
+COPY dummy/pyproject.toml .
+COPY dummy/src ./src
 
 RUN pip install .
 

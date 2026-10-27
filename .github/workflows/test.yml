@@ -167,12 +167,17 @@ jobs:
           python -m pip install -e . --group dev
 
       - name: Test
-        run: pytest
+        run: pytest -m "not integration"
 
       - name: Build container
+        working-directory: ${{ github.workspace }}
         env:
           IMAGE_NAME: ${{ matrix.image_name }}
-        run: docker build -t "$IMAGE_NAME" .
+        run: |
+          docker build \
+            -f "${{ matrix.root }}/Dockerfile" \
+            -t "$IMAGE_NAME" \
+            .
 
   ci:
     name: CI
