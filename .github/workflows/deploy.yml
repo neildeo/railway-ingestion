@@ -184,10 +184,12 @@ jobs:
           gcloud auth configure-docker "$REGISTRY" --quiet
 
       - name: Build image
+        working-directory: ${{ github.workspace }}
         env:
           IMAGE_URI: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ matrix.image_name }}
         run: |
           docker build \
+            -f "${{ matrix.root }}/Dockerfile" \
             -t "${IMAGE_URI}:${GITHUB_SHA}" \
             .
 
