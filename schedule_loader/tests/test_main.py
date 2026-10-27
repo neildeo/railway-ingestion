@@ -1102,7 +1102,18 @@ def test_load_schedule_shapes_schedule_records(
                 "location_type": "LO",
                 "record_identity": "LO",
                 "tiploc_code": "CARLILE",
+                "tiploc_instance": None,
+                "platform": "CLS",
+                "arrival": None,
                 "departure": "0905",
+                "pass": None,
+                "public_arrival": None,
+                "public_departure": None,
+                "path": None,
+                "line": None,
+                "engineering_allowance": None,
+                "pathing_allowance": None,
+                "performance_allowance": None,
             }
         ]
     )
