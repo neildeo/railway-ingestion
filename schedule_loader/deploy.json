@@ -1,0 +1,10 @@
+{
+  "image_name": "railway-ingest-schedule-loader",
+  "cloud_run_jobs": [
+    "railway-ingest-schedule-loader"
+  ],
+  "region": "europe-west1",
+  "depends_on": [
+    "schemas"
+  ]
+}
