@@ -9,13 +9,12 @@ import pyarrow as pa
 import pytest
 
 import schedule_loader.__main__ as loader_main
-from schedule_loader.config import LoadConfig
+from schedule_loader.config import AUDIT_SCHEMA_PATH, LoadConfig
 from schedule_loader.schema import SchemaMismatchError
 from schedule_loader.source import (
     RecordType,
     SourceMetadata,
 )
-
 
 LOAD_AUDIT_SCHEMA = (
     bigquery.SchemaField(
@@ -1565,6 +1564,7 @@ def test_write_load_audit_validates_schema_then_inserts_row(
 
     loader_main.write_load_audit(
         client=client,  # pyright: ignore[reportArgumentType]
+        schema_path=AUDIT_SCHEMA_PATH,
         project="test-project",
         dataset="raw",
         row=row,
@@ -1605,6 +1605,7 @@ def test_write_load_audit_does_not_insert_when_schema_mismatches(
     with pytest.raises(SchemaMismatchError):
         loader_main.write_load_audit(
             client=client,  # pyright: ignore[reportArgumentType]
+            schema_path=AUDIT_SCHEMA_PATH,
             project="test-project",
             dataset="raw",
             row={"load_id": "load-1"},
@@ -1646,6 +1647,7 @@ def test_write_load_audit_raises_on_insert_errors(
     ):
         loader_main.write_load_audit(
             client=client,  # pyright: ignore[reportArgumentType]
+            schema_path=AUDIT_SCHEMA_PATH,
             project="test-project",
             dataset="raw",
             row={"load_id": "load-1"},
@@ -1780,6 +1782,7 @@ def test_main_writes_success_audit_record(
 
     assert audit_call == {
         "client": bigquery_client,
+        "schema_path": AUDIT_SCHEMA_PATH,
         "project": "test-project",
         "dataset": "raw",
         "row": {
@@ -1854,6 +1857,7 @@ def test_main_writes_failure_audit_record_and_reraises(
 
     assert audit_call == {
         "client": bigquery_client,
+        "schema_path": loader_main.AUDIT_SCHEMA_PATH,
         "project": "test-project",
         "dataset": "raw",
         "row": {

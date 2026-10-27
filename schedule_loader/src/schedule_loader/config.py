@@ -7,6 +7,11 @@ from schedule_loader.source import RecordType
 
 SCHEMA_ROOT = Path("schemas")
 
+AUDIT_SCHEMA_PATH = (
+    SCHEMA_ROOT
+    / "load_audit.json"
+)
+
 # Mapping from record type to local BigQuery schema
 SCHEMA_FILES: dict[RecordType, str] = {
     RecordType.ASSOCIATION: "schedule_associations.json",

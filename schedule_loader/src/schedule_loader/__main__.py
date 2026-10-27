@@ -5,8 +5,9 @@ from datetime import UTC, datetime
 import secrets
 from functools import partial
 from dataclasses import dataclass
+from pathlib import Path
 
-from schedule_loader.config import LoadConfig
+from schedule_loader.config import AUDIT_SCHEMA_PATH, LoadConfig, load_config_from_env
 from schedule_loader.schema import load_bigquery_schema, assert_schemas_equal
 from schedule_loader.arrow import iter_rows_as_arrow_batches
 from schedule_loader.source import read_schedule_metadata, iter_schedule_records, RecordType
@@ -102,13 +103,17 @@ def load_schedule(
     )
 
     # Write to BQ
-    write_pending_batches(
+    rows_written = write_pending_batches(
         client=write_client,
         table=storage_write_table,
         batches=batches,
     )
 
-    raise NotImplementedError
+    return LoadResult(
+        publication_sequence=metadata.publication_sequence,
+        extract_type=metadata.extract_type,
+        row_count=rows_written,
+    )
 
 
 def generate_load_id(timestamp: datetime) -> str:
@@ -121,18 +126,106 @@ def generate_load_id(timestamp: datetime) -> str:
 
 def write_load_audit(
     client: bigquery.Client,
+    schema_path: Path,
     project: str,
     dataset: str,
     row: dict[str, Any],
 ):
-    raise NotImplementedError
+    """
+    Checks load audit schema matches local contract, then writes an audit
+    row to the table.
+    """
+    bigquery_table_id = f"{project}.{dataset}.load_audit"
+
+    local_schema = load_bigquery_schema(schema_path)
+    remote_schema = client.get_table(bigquery_table_id).schema
+
+    assert_schemas_equal(expected=local_schema, actual=remote_schema)
+
+    insert_errors = client.insert_rows_json(
+        bigquery_table_id,
+        [row],
+        row_ids=[row["load_id"]],
+    )
+
+    if insert_errors:
+        raise RuntimeError(
+            f"Failed to write load audit row for load {row["load_id"]}")
 
 
 def main() -> None:
     """
     Load one SCHEDULE record family from an exact immutable source object.
     """
-    raise NotImplementedError
+    config = load_config_from_env()
+    start_time = datetime.now(UTC)
+    load_id = generate_load_id(start_time)
+
+    storage_client = storage.Client(project=config.project)
+    bigquery_client = bigquery.Client(project=config.project)
+    write_client = bigquery_storage_v1.BigQueryWriteClient()
+
+    try:
+        load_result = load_schedule(
+            config=config,
+            load_id=load_id,
+            storage_client=storage_client,
+            bigquery_client=bigquery_client,
+            write_client=write_client
+        )
+    except Exception as load_exc:
+        # Write failure audit row
+        audit_row = {
+            "load_id": load_id,
+            "source_feed": "schedule",
+            "record_family": config.record_type.name.lower(),
+            "source_object": config.source_object,
+            "source_generation": config.source_generation,
+            "publication_sequence": None,
+            "extract_type": None,
+            "status": "FAILED",
+            "row_count": None,
+            "started_at": start_time.isoformat(),
+            "finished_at": datetime.now(UTC).isoformat(),
+            "error": str(load_exc),
+        }
+
+        try:
+            write_load_audit(
+                client=bigquery_client,
+                schema_path=AUDIT_SCHEMA_PATH,
+                project=config.project,
+                dataset="raw",
+                row=audit_row,
+            )
+        except Exception as audit_write_exc:
+            # Add logging eventually
+            pass
+        raise
+
+    # Success audit row
+    audit_row = {
+        "load_id": load_id,
+        "source_feed": "schedule",
+        "record_family": config.record_type.name.lower(),
+        "source_object": config.source_object,
+        "source_generation": config.source_generation,
+        "publication_sequence": load_result.publication_sequence,
+        "extract_type": load_result.extract_type,
+        "status": "SUCCEEDED",
+        "row_count": load_result.row_count,
+        "started_at": start_time.isoformat(),
+        "finished_at": datetime.now(UTC).isoformat(),
+        "error": None,
+    }
+
+    write_load_audit(
+        client=bigquery_client,
+        schema_path=AUDIT_SCHEMA_PATH,
+        project=config.project,
+        dataset="raw",
+        row=audit_row,
+    )
 
 
 if __name__ == "__main__":

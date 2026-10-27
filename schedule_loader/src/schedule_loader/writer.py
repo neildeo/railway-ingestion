@@ -14,7 +14,7 @@ def write_pending_batches(
     client: bigquery_storage_v1.BigQueryWriteClient,
     table: str,
     batches: Iterator[pa.RecordBatch]
-):
+) -> int:
     """
     Atomically write a sequence of Arrow `RecordBatch`es to a BigQuery table.
 
@@ -36,7 +36,7 @@ def write_pending_batches(
     try:
         first_batch = next(batches)
     except StopIteration:
-        return
+        return 0
 
     pa_schema = first_batch.schema
 
@@ -94,6 +94,8 @@ def write_pending_batches(
             f"{write_stream.name!r}: "
             f"{list(commit_response.stream_errors)!r}"
         )
+
+    return offset
 
 
 def _append_request_template(
