@@ -6,6 +6,7 @@ import secrets
 from functools import partial
 from dataclasses import dataclass
 from pathlib import Path
+import logging
 
 from schedule_loader.config import AUDIT_SCHEMA_PATH, LoadConfig, load_config_from_env
 from schedule_loader.schema import load_bigquery_schema, assert_schemas_equal
@@ -13,7 +14,9 @@ from schedule_loader.arrow import iter_rows_as_arrow_batches
 from schedule_loader.source import read_schedule_metadata, iter_schedule_records, RecordType
 from schedule_loader.row import LoadContext, attach_load_context, publication_row, tiploc_row, association_row, schedule_row
 from schedule_loader.writer import write_pending_batches
+from schedule_loader.logging_config import configure_logging
 
+logger = logging.getLogger(__name__)
 
 ARROW_RECORD_BATCH_SIZE = 1000
 
@@ -157,6 +160,8 @@ def main() -> None:
     """
     Load one SCHEDULE record family from an exact immutable source object.
     """
+    configure_logging()
+
     config = load_config_from_env()
     start_time = datetime.now(UTC)
     load_id = generate_load_id(start_time)
@@ -164,6 +169,20 @@ def main() -> None:
     storage_client = storage.Client(project=config.project)
     bigquery_client = bigquery.Client(project=config.project)
     write_client = bigquery_storage_v1.BigQueryWriteClient()
+
+    logger.info(
+        "SCHEDULE load started",
+        extra={
+            "event": "schedule_load_started",
+            "load_id": load_id,
+            "source_feed": "schedule",
+            "record_family": config.record_type.name.lower(),
+            "source_object": config.source_object,
+            "source_generation": config.source_generation,
+            "dataset": config.dataset,
+            "table": config.table_name,
+        },
+    )
 
     try:
         load_result = load_schedule(
@@ -174,6 +193,20 @@ def main() -> None:
             write_client=write_client
         )
     except Exception as load_exc:
+        logger.exception(
+            "SCHEDULE load failed",
+            extra={
+                "event": "schedule_load_failed",
+                "load_id": load_id,
+                "source_feed": "schedule",
+                "record_family": config.record_type.name.lower(),
+                "source_object": config.source_object,
+                "source_generation": config.source_generation,
+                "dataset": config.dataset,
+                "table": config.table_name,
+            },
+        )
+
         # Write failure audit row
         audit_row = {
             "load_id": load_id,
@@ -195,12 +228,19 @@ def main() -> None:
                 client=bigquery_client,
                 schema_path=AUDIT_SCHEMA_PATH,
                 project=config.project,
-                dataset="raw",
+                dataset=config.dataset,
                 row=audit_row,
             )
-        except Exception as audit_write_exc:
-            # Add logging eventually
-            pass
+        except Exception:
+            logger.exception(
+                "Failed to write audit record for failed load",
+                extra={
+                    "event": "schedule_load_audit_write_failed",
+                    "load_id": load_id,
+                    "record_family": config.record_type.name.lower(),
+                    "load_status": "FAILED",
+                },
+            )
         raise
 
     # Success audit row
@@ -219,12 +259,39 @@ def main() -> None:
         "error": None,
     }
 
-    write_load_audit(
-        client=bigquery_client,
-        schema_path=AUDIT_SCHEMA_PATH,
-        project=config.project,
-        dataset="raw",
-        row=audit_row,
+    try:
+        write_load_audit(
+            client=bigquery_client,
+            schema_path=AUDIT_SCHEMA_PATH,
+            project=config.project,
+            dataset=config.dataset,
+            row=audit_row,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to write audit row for successful SCHEDULE load",
+            extra={
+                "event": "schedule_load_audit_write_failed",
+                "load_id": load_id,
+                "record_family": config.record_type.name.lower(),
+                "load_status": "SUCCEEDED",
+            },
+        )
+        raise
+
+    logger.info(
+        "SCHEDULE load completed successfully",
+        extra={
+            "event": "schedule_load_completed",
+            "load_id": load_id,
+            "source_feed": "schedule",
+            "record_family": config.record_type.name.lower(),
+            "publication_sequence": load_result.publication_sequence,
+            "extract_type": load_result.extract_type,
+            "row_count": load_result.row_count,
+            "dataset": config.dataset,
+            "table": config.table_name,
+        },
     )
 
 
