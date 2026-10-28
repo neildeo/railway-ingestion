@@ -1,0 +1,63 @@
+[
+  {
+    "name": "load_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Sortable identifier for one physical load attempt. Generated at load start from the UTC load timestamp plus a short cryptographically random suffix, so later load attempts sort after earlier ones."
+  },
+  {
+    "name": "source_object",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "GCS object path containing the source SCHEDULE publication."
+  },
+  {
+    "name": "source_generation",
+    "type": "INTEGER",
+    "mode": "REQUIRED",
+    "description": "GCS generation identifying the exact physical version of the source object."
+  },
+  {
+    "name": "publication_sequence",
+    "type": "INTEGER",
+    "mode": "REQUIRED",
+    "description": "Network Rail publication sequence number used to identify and order SCHEDULE publications."
+  },
+  {
+    "name": "extract_type",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "SCHEDULE extract type from the publication metadata; expected values are 'full' or 'update'."
+  },
+  {
+    "name": "timestamp",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "Publication timestamp from the Network Rail SCHEDULE header, converted from the source Unix epoch value."
+  },
+  {
+    "name": "sender_application",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "sender_component",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "sender_organisation",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "classification",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "owner",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  }
+]

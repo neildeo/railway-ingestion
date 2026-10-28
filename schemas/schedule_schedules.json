@@ -1,0 +1,314 @@
+[
+  {
+    "name": "load_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Sortable identifier for one physical load attempt. Generated at load start from the UTC load timestamp plus a short cryptographically random suffix, so later load attempts sort after earlier ones."
+  },
+  {
+    "name": "source_object",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "GCS object path containing the source SCHEDULE publication."
+  },
+  {
+    "name": "source_generation",
+    "type": "INTEGER",
+    "mode": "REQUIRED",
+    "description": "GCS generation identifying the exact physical version of the source object."
+  },
+  {
+    "name": "publication_sequence",
+    "type": "INTEGER",
+    "mode": "REQUIRED",
+    "description": "Network Rail publication sequence number used to identify and order SCHEDULE publications."
+  },
+  {
+    "name": "extract_type",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "SCHEDULE extract type from the publication metadata; expected values are 'full' or 'update'."
+  },
+  {
+    "name": "transaction_type",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Source transaction type for the schedule record; expected values are 'Create' or 'Delete'. Full extracts are expected to contain only 'Create' records."
+  },
+  {
+    "name": "CIF_stp_indicator",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Short-term planning indicator: `C` STP cancellation of a permanent schedule, `N` new STP schedule, `O` STP overlay, or `P` permanent schedule."
+  },
+  {
+    "name": "CIF_train_uid",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "CIF train UID identifying the scheduled service family. In this dataset, 'train' refers to a scheduled service rather than a physical rolling-stock asset. Multiple schedule records may share a UID across dates or STP variants."
+  },
+  {
+    "name": "schedule_start_date",
+    "type": "DATE",
+    "mode": "REQUIRED",
+    "description": "First date on which this schedule record applies. Present on 'Create' and 'Delete' records."
+  },
+  {
+    "name": "schedule_end_date",
+    "type": "DATE",
+    "mode": "NULLABLE",
+    "description": "Last date on which this schedule record applies. Present on 'Create' records and omitted on 'Delete' records."
+  },
+  {
+    "name": "CIF_bank_holiday_running",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "CIF bank-holiday running code used for timetable presentation. Present on 'Create' records, commonly null, and omitted on 'Delete' records."
+  },
+  {
+    "name": "schedule_days_runs",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Seven-character Monday-to-Sunday running-day mask, where `1` means the service runs on that day. Present on 'Create' records and omitted on 'Delete' records."
+  },
+  {
+    "name": "train_status",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "CIF train-status code describing the type/status of the scheduled service. Present on 'Create' records and omitted on 'Delete' records."
+  },
+  {
+    "name": "atoc_code",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "ATOC code identifying the train operator. Present on full `P`/`O`/`N` 'Create' schedules and omitted on cancellation-style 'Create' records and 'Delete' records."
+  },
+  {
+    "name": "applicable_timetable",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Indicates whether the service is an Applicable Timetable Service for performance monitoring. Present on full `P`/`O`/`N` 'Create' schedules and omitted on cancellation-style 'Create' records and 'Delete' records."
+  },
+  {
+    "name": "new_schedule_segment",
+    "type": "RECORD",
+    "mode": "NULLABLE",
+    "description": "Additional schedule details derived from the CIF Basic Schedule Extra Details (BX) record. Present on full `P`/`O`/`N` 'Create' schedules and omitted on cancellation-style 'Create' records and 'Delete' records.",
+    "fields": [
+      {
+        "name": "traction_class",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Legacy CIF traction-class field. Documented by Network Rail as not used and often supplied as an empty string. Blank-to-null normalisation is deferred to staging."
+      },
+      {
+        "name": "uic_code",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "UIC (Union Internationale des Chemins de Fer) service code, principally relevant to international services and often supplied as an empty string. Blank-to-null normalisation is deferred to staging."
+      }
+    ]
+  },
+  {
+    "name": "schedule_segment",
+    "type": "RECORD",
+    "mode": "NULLABLE",
+    "description": "Service attributes and ordered timing locations for the schedule. Present on 'Create' records, including cancellation-style 'Create' records, and omitted on 'Delete' records. Cancellation-style 'Create' records omit schedule_location.",
+    "fields": [
+      {
+        "name": "signalling_id",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "Operational signalling ID, commonly referred to as the train headcode. May be an empty string for services without a published signalling ID."
+      },
+      {
+        "name": "CIF_business_sector",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "CIF business sector field. Historically represented the business sector; now used as the portion ID for services which join or split."
+      },
+      {
+        "name": "CIF_course_indicator",
+        "type": "INTEGER",
+        "mode": "REQUIRED",
+        "description": "Legacy CIF course indicator. Documented by Network Rail as not used."
+      },
+      {
+        "name": "CIF_headcode",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "National Reservation System headcode designated by the train operator; distinct from signalling_id. May be an empty string."
+      },
+      {
+        "name": "CIF_train_category",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "CIF train category code describing the broad type of service."
+      },
+      {
+        "name": "CIF_service_branding",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "CIF service-branding code. Often blank; `E` denotes Eurostar in the published code set."
+      },
+      {
+        "name": "CIF_train_service_code",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "Train service code used to group scheduled services and for railway revenue/accounting purposes. Here, 'train' refers to a scheduled service rather than a physical rolling-stock asset."
+      },
+      {
+        "name": "CIF_connection_indicator",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Legacy CIF connection indicator. Documented by Network Rail as not used and observed null in the profiled full extract."
+      },
+      {
+        "name": "CIF_sleepers",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Code indicating sleeper accommodation where applicable; otherwise null."
+      },
+      {
+        "name": "CIF_catering_code",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "One or more CIF catering codes describing onboard catering provision; otherwise null."
+      },
+      {
+        "name": "CIF_reservations",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "CIF reservation code describing reservation availability or requirements; otherwise null."
+      },
+      {
+        "name": "CIF_operating_characteristics",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Up to six CIF operating-characteristic codes applying to the service; otherwise null."
+      },
+      {
+        "name": "CIF_timing_load",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "CIF timing-load code used in timetable planning to represent service performance characteristics; otherwise null."
+      },
+      {
+        "name": "CIF_train_class",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Passenger accommodation class code; otherwise null."
+      },
+      {
+        "name": "CIF_power_type",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "CIF power-type code describing the traction type used for timetable planning; otherwise null."
+      },
+      {
+        "name": "CIF_speed",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Planned speed of the service as carried in the CIF schedule; otherwise null."
+      },
+      {
+        "name": "schedule_location",
+        "type": "RECORD",
+        "mode": "REPEATED",
+        "description": "Ordered timing locations forming the schedule. Full `P`/`O`/`N` 'Create' schedules contain locations; cancellation-style 'Create' records and 'Delete' records do not.",
+        "fields": [
+          {
+            "name": "location_type",
+            "type": "STRING",
+            "mode": "REQUIRED",
+            "description": "Location record type: `LO` origin, `LI` intermediate, or `LT` terminus. Mirrors record_identity in this feed."
+          },
+          {
+            "name": "record_identity",
+            "type": "STRING",
+            "mode": "REQUIRED",
+            "description": "CIF location record identity: `LO` origin, `LI` intermediate, or `LT` terminus."
+          },
+          {
+            "name": "tiploc_code",
+            "type": "STRING",
+            "mode": "REQUIRED",
+            "description": "TIPLOC code identifying this schedule location."
+          },
+          {
+            "name": "tiploc_instance",
+            "type": "STRING",
+            "mode": "NULLABLE",
+            "description": "Occurrence suffix used to distinguish repeated visits to the same TIPLOC within a schedule. Usually null."
+          },
+          {
+            "name": "platform",
+            "type": "STRING",
+            "mode": "NULLABLE",
+            "description": "Planned platform or line identifier at the location, where supplied."
+          },
+          {
+            "name": "arrival",
+            "type": "STRING",
+            "mode": "NULLABLE",
+            "description": "Working Timetable arrival time at intermediate or terminating locations, in local railway time as HHMM with optional `H` for a half-minute. Omitted where arrival is not applicable."
+          },
+          {
+            "name": "departure",
+            "type": "STRING",
+            "mode": "NULLABLE",
+            "description": "Working Timetable departure time at originating or intermediate locations, in local railway time as HHMM with optional `H` for a half-minute. Omitted where departure is not applicable."
+          },
+          {
+            "name": "pass",
+            "type": "STRING",
+            "mode": "NULLABLE",
+            "description": "Working Timetable passing time for an intermediate timing point, in local railway time as HHMM with optional `H` for a half-minute. Omitted for locations with arrival/departure activity."
+          },
+          {
+            "name": "public_arrival",
+            "type": "STRING",
+            "mode": "NULLABLE",
+            "description": "Passenger-facing public arrival time at intermediate or terminating locations, in local time as HHMM. Omitted where not applicable or not published."
+          },
+          {
+            "name": "public_departure",
+            "type": "STRING",
+            "mode": "NULLABLE",
+            "description": "Passenger-facing public departure time at originating or intermediate locations, in local time as HHMM. Omitted where not applicable or not published."
+          },
+          {
+            "name": "path",
+            "type": "STRING",
+            "mode": "NULLABLE",
+            "description": "Planned arrival path or line abbreviation at the location, where supplied."
+          },
+          {
+            "name": "line",
+            "type": "STRING",
+            "mode": "NULLABLE",
+            "description": "Planned departure line abbreviation at the location, where supplied."
+          },
+          {
+            "name": "engineering_allowance",
+            "type": "STRING",
+            "mode": "NULLABLE",
+            "description": "Additional schedule time allowed for recovery from engineering activities, expressed in whole or half minutes."
+          },
+          {
+            "name": "pathing_allowance",
+            "type": "STRING",
+            "mode": "NULLABLE",
+            "description": "Additional schedule time allowed for pathing requirements, expressed in whole or half minutes."
+          },
+          {
+            "name": "performance_allowance",
+            "type": "STRING",
+            "mode": "NULLABLE",
+            "description": "Performance allowance added to the schedule, expressed in whole or half minutes."
+          }
+        ]
+      }
+    ]
+  }
+]
