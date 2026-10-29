@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from google.api_core import exceptions
+from google.cloud.bigquery_storage_v1 import types
+from google.rpc import status_pb2
 import pyarrow as pa
 import pytest
 
@@ -31,15 +34,24 @@ def _batch(*values: int) -> pa.RecordBatch:
 
 
 class FakeAppendFuture:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        error: Exception | None = None,
+    ) -> None:
+        self.error = error
         self.result_called = False
 
     def result(self) -> None:
         self.result_called = True
 
+        if self.error is not None:
+            raise self.error
+
 
 class FakeAppendRowsStream:
     instances: list["FakeAppendRowsStream"] = []
+    future_error: Exception | None = None
 
     def __init__(
         self,
@@ -55,7 +67,9 @@ class FakeAppendRowsStream:
         self.__class__.instances.append(self)
 
     def send(self, request):
-        future = FakeAppendFuture()
+        future = FakeAppendFuture(
+            error=self.__class__.future_error,
+        )
 
         self.requests.append(request)
         self.futures.append(future)
@@ -123,6 +137,7 @@ def fake_append_rows_stream(
     monkeypatch: pytest.MonkeyPatch,
 ):
     FakeAppendRowsStream.instances = []
+    FakeAppendRowsStream.future_error = None
 
     monkeypatch.setattr(
         writer_module,
@@ -350,3 +365,55 @@ def test_write_pending_batches_raises_on_commit_stream_errors() -> None:
                 ]
             ),
         )
+
+
+def test_write_pending_batches_reports_row_errors_from_failed_append() -> None:
+    response = types.AppendRowsResponse(
+        error=status_pb2.Status(
+            code=3,
+            message="Errors found while processing rows.",
+        ),
+        row_errors=[
+            types.RowError(
+                index=1,
+                code=types.RowError.RowErrorCode.FIELDS_ERROR,
+                message=(
+                    "Invalid value for field "
+                    "schedule_segment.CIF_headcode"
+                ),
+            ),
+        ],
+    )
+
+    FakeAppendRowsStream.future_error = (
+        exceptions.from_grpc_status(
+            response.error.code,
+            response.error.message,
+            response=response,
+        )
+    )
+
+    client = FakeWriteClient()
+
+    with pytest.raises(
+        RuntimeError,
+        match="BigQuery append failed at offset 0",
+    ) as exc_info:
+        write_pending_batches(
+            client=client,  # pyright: ignore[reportArgumentType]
+            table=TABLE,
+            batches=iter(
+                [
+                    _batch(1, 2),
+                ]
+            ),
+        )
+
+    message = str(exc_info.value)
+
+    assert "row 1" in message
+    assert "FIELDS_ERROR" in message
+    assert (
+        "Invalid value for field "
+        "schedule_segment.CIF_headcode"
+    ) in message
