@@ -146,11 +146,9 @@ def schedule_row(
             else None
         ),
         "schedule_segment": (
-            _schedule_segment_row(
-                schedule_segment
-            )
+            _schedule_segment_row(schedule_segment)
             if schedule_segment is not None
-            else None
+            else _empty_schedule_segment_row()
         ),
     }
 
@@ -223,6 +221,28 @@ def _schedule_segment_row(
             _schedule_location_row(location)
             for location in locations
         ],
+    }
+
+
+def _empty_schedule_segment_row() -> dict[str, Any]:
+    return {
+        "signalling_id": None,
+        "CIF_business_sector": None,
+        "CIF_course_indicator": None,
+        "CIF_headcode": None,
+        "CIF_train_category": None,
+        "CIF_service_branding": None,
+        "CIF_train_service_code": None,
+        "CIF_connection_indicator": None,
+        "CIF_sleepers": None,
+        "CIF_catering_code": None,
+        "CIF_reservations": None,
+        "CIF_operating_characteristics": None,
+        "CIF_timing_load": None,
+        "CIF_train_class": None,
+        "CIF_power_type": None,
+        "CIF_speed": None,
+        "schedule_location": [],
     }
 
 
