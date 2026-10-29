@@ -7,6 +7,7 @@ from google.cloud import bigquery_storage_v1
 from google.cloud.bigquery_storage_v1 import types
 from google.cloud.bigquery_storage_v1.writer import AppendRowsStream
 from google.protobuf import wrappers_pb2
+from google.api_core.exceptions import InvalidArgument
 
 
 def write_pending_batches(
@@ -72,7 +73,30 @@ def write_pending_batches(
 
             # AppendRows is asynchronous. Do not finalize the stream until
             # BigQuery has acknowledged this append.
-            append_future.result()
+            try:
+                append_future.result()
+
+            except InvalidArgument as exc:
+                response = exc.response
+
+                if isinstance(response, types.AppendRowsResponse):
+                    details = "; ".join(
+                        (
+                            f"row {row_error.index} "
+                            # Use this to get error code name, not number
+                            f"[{types.RowError.RowErrorCode(row_error.code).name}]: "
+                            f"{row_error.message}"
+                        )
+                        for row_error in response.row_errors
+                    )
+                    raise RuntimeError(
+                        "BigQuery append failed "
+                        f"at offset {offset}: "
+                        f"{details}"
+                    ) from exc
+
+                raise
+
             offset += batch.num_rows
     finally:
         append_stream.close()

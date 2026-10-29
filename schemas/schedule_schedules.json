@@ -113,48 +113,48 @@
     "name": "schedule_segment",
     "type": "RECORD",
     "mode": "NULLABLE",
-    "description": "Service attributes and ordered timing locations for the schedule. Present on 'Create' records, including cancellation-style 'Create' records, and omitted on 'Delete' records. Cancellation-style 'Create' records omit schedule_location.",
+    "description": "Service attributes and ordered timing locations for the schedule. Present in the source on 'Create' records, including cancellation-style 'Create' records, and omitted from source 'Delete' records. Raw 'Delete' rows materialise an empty struct with null scalar fields and an empty schedule_location array because BigQuery Storage Write does not permit null repeated fields beneath a null Arrow struct.",
     "fields": [
       {
         "name": "signalling_id",
         "type": "STRING",
-        "mode": "REQUIRED",
+        "mode": "NULLABLE",
         "description": "Operational signalling ID, commonly referred to as the train headcode. May be an empty string for services without a published signalling ID."
       },
       {
         "name": "CIF_business_sector",
         "type": "STRING",
-        "mode": "REQUIRED",
+        "mode": "NULLABLE",
         "description": "CIF business sector field. Historically represented the business sector; now used as the portion ID for services which join or split."
       },
       {
         "name": "CIF_course_indicator",
         "type": "INTEGER",
-        "mode": "REQUIRED",
+        "mode": "NULLABLE",
         "description": "Legacy CIF course indicator. Documented by Network Rail as not used."
       },
       {
         "name": "CIF_headcode",
         "type": "STRING",
-        "mode": "REQUIRED",
+        "mode": "NULLABLE",
         "description": "National Reservation System headcode designated by the train operator; distinct from signalling_id. May be an empty string."
       },
       {
         "name": "CIF_train_category",
         "type": "STRING",
-        "mode": "REQUIRED",
+        "mode": "NULLABLE",
         "description": "CIF train category code describing the broad type of service."
       },
       {
         "name": "CIF_service_branding",
         "type": "STRING",
-        "mode": "REQUIRED",
+        "mode": "NULLABLE",
         "description": "CIF service-branding code. Often blank; `E` denotes Eurostar in the published code set."
       },
       {
         "name": "CIF_train_service_code",
         "type": "STRING",
-        "mode": "REQUIRED",
+        "mode": "NULLABLE",
         "description": "Train service code used to group scheduled services and for railway revenue/accounting purposes. Here, 'train' refers to a scheduled service rather than a physical rolling-stock asset."
       },
       {

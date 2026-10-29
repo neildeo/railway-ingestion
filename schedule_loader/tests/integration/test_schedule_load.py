@@ -22,6 +22,12 @@ load_dotenv()
 
 EXPECTED_SCHEDULE_COUNT = 728364
 
+UPDATE_SOURCE_OBJECT = (
+    "schedules/update/sequence=5251/"
+    "schedules.json.gz"
+)
+UPDATE_SOURCE_GENERATION = 1791271962017410
+
 
 @pytest.mark.integration
 def test_load_schedules_end_to_end() -> None:
@@ -262,6 +268,132 @@ def test_load_schedules_end_to_end() -> None:
             cancellation.schedule_segment["schedule_location"]
             == []
         )
+
+    finally:
+        bigquery_client.query(
+            f"""
+            DELETE FROM `{table_id}`
+            WHERE load_id = @load_id
+            """,
+            job_config=bigquery.QueryJobConfig(
+                query_parameters=[
+                    bigquery.ScalarQueryParameter(
+                        "load_id",
+                        "STRING",
+                        load_id,
+                    )
+                ]
+            ),
+        ).result()
+
+
+@pytest.mark.integration
+def test_load_schedule_update_end_to_end() -> None:
+    project = os.environ["INTEGRATION_GCP_PROJECT"]
+    source_bucket = os.environ[
+        "INTEGRATION_SOURCE_BUCKET"
+    ]
+
+    repo_root = Path(__file__).resolve().parents[3]
+
+    config = LoadConfig(
+        source_bucket=source_bucket,
+        source_object=UPDATE_SOURCE_OBJECT,
+        source_generation=UPDATE_SOURCE_GENERATION,
+        project=project,
+        dataset="integration_test",
+        record_type=RecordType.SCHEDULE,
+        table_name="schedule_schedules",
+        schema_path=(
+            repo_root
+            / "schemas"
+            / "schedule_schedules.json"
+        ),
+    )
+
+    load_id = generate_load_id(datetime.now(UTC))
+
+    storage_client = storage.Client(
+        project=project,
+    )
+    bigquery_client = bigquery.Client(
+        project=project,
+    )
+    write_client = (
+        bigquery_storage_v1.BigQueryWriteClient()
+    )
+
+    table_id = (
+        f"{project}."
+        "integration_test."
+        "schedule_schedules"
+    )
+
+    try:
+        load_result = load_schedule(
+            config=config,
+            load_id=load_id,
+            storage_client=storage_client,
+            bigquery_client=bigquery_client,
+            write_client=write_client,
+        )
+
+        assert load_result.publication_sequence == 5251
+        assert load_result.extract_type == "update"
+        assert load_result.row_count > 0
+
+        rows = list(
+            bigquery_client.query(
+                f"""
+                SELECT
+                    COUNT(*) AS row_count,
+                    COUNTIF(
+                        source_object != @source_object
+                    ) AS wrong_source_object_count,
+                    COUNTIF(
+                        source_generation
+                            != @source_generation
+                    ) AS wrong_source_generation_count,
+                    COUNTIF(
+                        publication_sequence != 5251
+                    ) AS wrong_publication_sequence_count,
+                    COUNTIF(
+                        extract_type != 'update'
+                    ) AS wrong_extract_type_count
+                FROM `{table_id}`
+                WHERE load_id = @load_id
+                """,
+                job_config=bigquery.QueryJobConfig(
+                    query_parameters=[
+                        bigquery.ScalarQueryParameter(
+                            "load_id",
+                            "STRING",
+                            load_id,
+                        ),
+                        bigquery.ScalarQueryParameter(
+                            "source_object",
+                            "STRING",
+                            UPDATE_SOURCE_OBJECT,
+                        ),
+                        bigquery.ScalarQueryParameter(
+                            "source_generation",
+                            "INT64",
+                            UPDATE_SOURCE_GENERATION,
+                        ),
+                    ]
+                ),
+            ).result()
+        )
+
+        assert len(rows) == 1
+
+        row = rows[0]
+
+        assert row.row_count == load_result.row_count
+        assert row.wrong_source_object_count == 0
+        assert row.wrong_source_generation_count == 0
+        assert row.wrong_publication_sequence_count == 0
+        assert row.wrong_extract_type_count == 0
 
     finally:
         bigquery_client.query(
