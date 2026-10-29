@@ -475,7 +475,7 @@ def test_schedule_row_preserves_explicit_empty_schedule_locations() -> None:
     )
 
 
-def test_schedule_row_maps_missing_schedule_segment_to_none() -> None:
+def test_schedule_row_maps_missing_schedule_segment_to_empty_segment() -> None:
     record = {
         "transaction_type": "Delete",
         "CIF_stp_indicator": "P",
@@ -485,7 +485,26 @@ def test_schedule_row_maps_missing_schedule_segment_to_none() -> None:
 
     result = schedule_row(record)
 
-    assert result["schedule_segment"] is None
+    assert result["schedule_segment"] == {
+        "signalling_id": None,
+        "CIF_business_sector": None,
+        "CIF_course_indicator": None,
+        "CIF_headcode": None,
+        "CIF_train_category": None,
+        "CIF_service_branding": None,
+        "CIF_train_service_code": None,
+        "CIF_connection_indicator": None,
+        "CIF_sleepers": None,
+        "CIF_catering_code": None,
+        "CIF_reservations": None,
+        "CIF_operating_characteristics": None,
+        "CIF_timing_load": None,
+        "CIF_train_class": None,
+        "CIF_power_type": None,
+        "CIF_speed": None,
+        "schedule_location": [],
+    }
+
     assert result["new_schedule_segment"] is None
     assert result["schedule_end_date"] is None
     assert result["schedule_days_runs"] is None
