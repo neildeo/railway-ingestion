@@ -73,6 +73,7 @@ async def test_execute_workflows_end_to_end() -> None:
             client=client,
             parent=PARENT,
             execution_configs=execution_configs,
+            max_in_flight=10,
             poll_interval_seconds=1,
         )
 

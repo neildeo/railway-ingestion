@@ -15,6 +15,7 @@ async def execute_workflows(
     client: ExecutionsAsyncClient,
     parent: str,
     execution_configs: list[WorkflowExecutionArgs],
+    max_in_flight: int,
     poll_interval_seconds: float = 10.0,
 ) -> list[WorkflowExecutionResult]:
     execution_tasks = [
