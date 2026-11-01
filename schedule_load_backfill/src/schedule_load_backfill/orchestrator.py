@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from google.cloud.workflows.executions_v1 import ExecutionsAsyncClient
+import asyncio
 
 from schedule_load_backfill.workflow import (
     WorkflowExecutionArgs,
@@ -16,15 +17,13 @@ async def execute_workflows(
     execution_configs: list[WorkflowExecutionArgs],
     poll_interval_seconds: float = 10.0,
 ) -> list[WorkflowExecutionResult]:
-    results = []
-
-    for e in execution_configs:
-        result = await run_workflow_to_completion(
+    execution_tasks = [
+        run_workflow_to_completion(
             client=client,
             parent=parent,
-            arguments=e,
+            arguments=cfg,
             poll_interval_seconds=poll_interval_seconds
-        )
-        results.append(result)
+        ) for cfg in execution_configs
+    ]
 
-    return results
+    return await asyncio.gather(*execution_tasks)
