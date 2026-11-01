@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from google.cloud.workflows.executions_v1 import ExecutionsAsyncClient
 import asyncio
+from collections import deque
 
 from schedule_load_backfill.workflow import (
     WorkflowExecutionArgs,
     WorkflowExecutionResult,
+    WorkflowTerminalState,
     run_workflow_to_completion,
 )
 
@@ -18,13 +20,49 @@ async def execute_workflows(
     max_in_flight: int,
     poll_interval_seconds: float = 10.0,
 ) -> list[WorkflowExecutionResult]:
-    execution_tasks = [
-        run_workflow_to_completion(
-            client=client,
-            parent=parent,
-            arguments=cfg,
-            poll_interval_seconds=poll_interval_seconds
-        ) for cfg in execution_configs
-    ]
+    if max_in_flight < 1:
+        raise ValueError(f"Invalid max_in_flight: {max_in_flight}")
 
-    return await asyncio.gather(*execution_tasks)
+    execution_config_queue = deque(execution_configs)
+
+    in_flight = set(
+        asyncio.Task(
+            run_workflow_to_completion(
+                client=client,
+                parent=parent,
+                arguments=execution_config_queue.popleft(),
+                poll_interval_seconds=poll_interval_seconds,
+            )
+        ) for _ in range(max_in_flight)
+    )
+
+    continue_admitting = True
+    results: list[WorkflowExecutionResult] = []
+
+    while in_flight:
+        done, pending = await asyncio.wait(
+            in_flight,
+            return_when="FIRST_COMPLETED"
+        )
+
+        for d in done:
+            result = await d
+            if result.state != WorkflowTerminalState.SUCCEEDED:
+                continue_admitting = False
+            results.append(result)
+
+        in_flight = pending
+
+        if continue_admitting:
+            for _ in range(len(done)):
+                if execution_config_queue:
+                    in_flight.add(asyncio.Task(
+                        run_workflow_to_completion(
+                            client=client,
+                            parent=parent,
+                            arguments=execution_config_queue.popleft(),
+                            poll_interval_seconds=poll_interval_seconds,
+                        )
+                    ))
+
+    return results
