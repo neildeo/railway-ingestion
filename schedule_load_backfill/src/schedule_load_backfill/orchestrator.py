@@ -33,7 +33,10 @@ async def execute_workflows(
                 arguments=execution_config_queue.popleft(),
                 poll_interval_seconds=poll_interval_seconds,
             )
-        ) for _ in range(max_in_flight)
+        ) for _ in range(min(
+            max_in_flight,
+            len(execution_config_queue)
+        ))
     )
 
     continue_admitting = True
