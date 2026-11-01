@@ -26,7 +26,7 @@ async def execute_workflows(
     execution_config_queue = deque(execution_configs)
 
     in_flight = set(
-        asyncio.Task(
+        asyncio.create_task(
             run_workflow_to_completion(
                 client=client,
                 parent=parent,
@@ -42,7 +42,7 @@ async def execute_workflows(
     while in_flight:
         done, pending = await asyncio.wait(
             in_flight,
-            return_when="FIRST_COMPLETED"
+            return_when=asyncio.FIRST_COMPLETED
         )
 
         for d in done:
@@ -56,7 +56,7 @@ async def execute_workflows(
         if continue_admitting:
             for _ in range(len(done)):
                 if execution_config_queue:
-                    in_flight.add(asyncio.Task(
+                    in_flight.add(asyncio.create_task(
                         run_workflow_to_completion(
                             client=client,
                             parent=parent,

@@ -545,3 +545,51 @@ async def test_execute_workflows_rejects_invalid_max_in_flight(
         )
 
     assert client.create_requests == []
+
+
+@pytest.mark.asyncio
+async def test_execute_workflows_handles_fewer_configs_than_max_in_flight() -> None:
+    client = ControlledExecutionsClient()
+
+    task = asyncio.create_task(
+        execute_workflows(
+            client=client,  # pyright: ignore[reportArgumentType]
+            parent=PARENT,
+            execution_configs=[
+                ARGUMENTS_A,
+                ARGUMENTS_B,
+            ],
+            max_in_flight=5,
+            poll_interval_seconds=0,
+        )
+    )
+
+    await wait_until(
+        lambda: len(client.create_requests) == 2
+    )
+
+    assert client.started_arguments == {
+        ARGUMENTS_A,
+        ARGUMENTS_B,
+    }
+
+    client.release(EXECUTION_A)
+    client.release(EXECUTION_B)
+
+    results = await asyncio.wait_for(
+        task,
+        timeout=1,
+    )
+
+    assert set(results) == {
+        WorkflowExecutionResult(
+            execution_name=EXECUTION_A,
+            arguments=ARGUMENTS_A,
+            state=WorkflowTerminalState.SUCCEEDED,
+        ),
+        WorkflowExecutionResult(
+            execution_name=EXECUTION_B,
+            arguments=ARGUMENTS_B,
+            state=WorkflowTerminalState.SUCCEEDED,
+        ),
+    }
