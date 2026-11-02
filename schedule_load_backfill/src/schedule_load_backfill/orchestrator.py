@@ -77,7 +77,8 @@ async def execute_workflows(
     if len(exceptions) == 1:
         raise exceptions[0]
     elif len(exceptions) > 1:
-        raise ExceptionGroup("Multiple API exceptions encountered", exceptions)
+        raise ExceptionGroup(
+            "Multiple workflow orchestration errors", exceptions)
 
     return results
 
