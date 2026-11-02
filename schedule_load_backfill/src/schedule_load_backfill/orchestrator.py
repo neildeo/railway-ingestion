@@ -41,6 +41,7 @@ async def execute_workflows(
 
     continue_admitting = True
     results: list[WorkflowExecutionResult] = []
+    exceptions: list[Exception] = []
 
     while in_flight:
         done, pending = await asyncio.wait(
@@ -49,10 +50,17 @@ async def execute_workflows(
         )
 
         for d in done:
-            result = await d
-            if result.state != WorkflowTerminalState.SUCCEEDED:
+            try:
+                result = await d
+            except Exception as e:
+                exceptions.append(e)
+                result = None
+
+            if result is None or result.state != WorkflowTerminalState.SUCCEEDED:
                 continue_admitting = False
-            results.append(result)
+
+            if result:
+                results.append(result)
 
         in_flight = pending
 
@@ -67,5 +75,10 @@ async def execute_workflows(
                             poll_interval_seconds=poll_interval_seconds,
                         )
                     ))
+
+    if len(exceptions) == 1:
+        raise exceptions[0]
+    elif len(exceptions) > 1:
+        raise ExceptionGroup("Multiple API exceptions encountered", exceptions)
 
     return results
