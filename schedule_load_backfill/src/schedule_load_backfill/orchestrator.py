@@ -26,13 +26,11 @@ async def execute_workflows(
     execution_config_queue = deque(execution_configs)
 
     in_flight = set(
-        asyncio.create_task(
-            run_workflow_to_completion(
-                client=client,
-                parent=parent,
-                arguments=execution_config_queue.popleft(),
-                poll_interval_seconds=poll_interval_seconds,
-            )
+        _create_execution_task(
+            client=client,
+            parent=parent,
+            arguments=execution_config_queue.popleft(),
+            poll_interval_seconds=poll_interval_seconds,
         ) for _ in range(min(
             max_in_flight,
             len(execution_config_queue)
@@ -44,37 +42,37 @@ async def execute_workflows(
     exceptions: list[Exception] = []
 
     while in_flight:
-        done, pending = await asyncio.wait(
+        done, in_flight = await asyncio.wait(
             in_flight,
-            return_when=asyncio.FIRST_COMPLETED
+            return_when=asyncio.FIRST_COMPLETED,
         )
 
-        for d in done:
+        for task in done:
             try:
-                result = await d
-            except Exception as e:
-                exceptions.append(e)
-                result = None
-
-            if result is None or result.state != WorkflowTerminalState.SUCCEEDED:
+                result = task.result()
+            except Exception as exc:
+                exceptions.append(exc)
                 continue_admitting = False
+                continue
 
-            if result:
-                results.append(result)
+            results.append(result)
 
-        in_flight = pending
+            if result.state is not WorkflowTerminalState.SUCCEEDED:
+                continue_admitting = False
 
         if continue_admitting:
             for _ in range(len(done)):
-                if execution_config_queue:
-                    in_flight.add(asyncio.create_task(
-                        run_workflow_to_completion(
-                            client=client,
-                            parent=parent,
-                            arguments=execution_config_queue.popleft(),
-                            poll_interval_seconds=poll_interval_seconds,
-                        )
-                    ))
+                if not execution_config_queue:
+                    break
+
+                in_flight.add(
+                    _create_execution_task(
+                        client=client,
+                        parent=parent,
+                        arguments=execution_config_queue.popleft(),
+                        poll_interval_seconds=poll_interval_seconds,
+                    )
+                )
 
     if len(exceptions) == 1:
         raise exceptions[0]
@@ -82,3 +80,20 @@ async def execute_workflows(
         raise ExceptionGroup("Multiple API exceptions encountered", exceptions)
 
     return results
+
+
+def _create_execution_task(
+    *,
+    client: ExecutionsAsyncClient,
+    parent: str,
+    arguments: WorkflowExecutionArgs,
+    poll_interval_seconds: float,
+) -> asyncio.Task[WorkflowExecutionResult]:
+    return asyncio.create_task(
+        run_workflow_to_completion(
+            client=client,
+            parent=parent,
+            arguments=arguments,
+            poll_interval_seconds=poll_interval_seconds,
+        )
+    )
