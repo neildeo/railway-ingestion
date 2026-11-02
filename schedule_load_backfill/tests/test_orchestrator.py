@@ -186,6 +186,50 @@ class ControlledExecutionsClient:
         }
 
 
+class FailingExecutionsClient(ControlledExecutionsClient):
+    def __init__(self) -> None:
+        super().__init__()
+
+        self.poll_errors: dict[str, Exception] = {}
+
+    async def get_execution(
+        self,
+        *,
+        request: dict,
+    ) -> Execution:
+        execution_name = request["name"]
+
+        await self.release_events[
+            execution_name
+        ].wait()
+
+        if execution_name in self.poll_errors:
+            raise self.poll_errors[
+                execution_name
+            ]
+
+        return Execution(
+            name=execution_name,
+            state=self.terminal_states[
+                execution_name
+            ],
+        )
+
+    def fail(
+        self,
+        execution_name: str,
+        *,
+        error: Exception,
+    ) -> None:
+        self.poll_errors[
+            execution_name
+        ] = error
+
+        self.release_events[
+            execution_name
+        ].set()
+
+
 async def wait_until(
     predicate,
 ) -> None:
@@ -592,4 +636,130 @@ async def test_execute_workflows_handles_fewer_configs_than_max_in_flight() -> N
             arguments=ARGUMENTS_B,
             state=WorkflowTerminalState.SUCCEEDED,
         ),
+    }
+
+
+@pytest.mark.asyncio
+async def test_execute_workflows_stops_admission_drains_and_reraises_orchestration_error() -> None:
+    client = FailingExecutionsClient()
+
+    task = asyncio.create_task(
+        execute_workflows(
+            client=client,  # pyright: ignore[reportArgumentType]
+            parent=PARENT,
+            execution_configs=[
+                ARGUMENTS_A,
+                ARGUMENTS_B,
+                ARGUMENTS_C,
+            ],
+            max_in_flight=2,
+            poll_interval_seconds=0,
+        )
+    )
+
+    await wait_until(
+        lambda: len(client.create_requests) == 2
+    )
+
+    failure = RuntimeError("poll failed")
+
+    client.fail(
+        EXECUTION_B,
+        error=failure,
+    )
+
+    # B has failed, but A is still deliberately blocked.
+    #
+    # A correct orchestrator must therefore remain alive so that it
+    # can drain A before propagating B's exception.
+    #
+    # shield() prevents the timeout from cancelling the orchestrator.
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(
+            asyncio.shield(task),
+            timeout=0.05,
+        )
+
+    # No further work may have been admitted while draining.
+    assert client.started_arguments == {
+        ARGUMENTS_A,
+        ARGUMENTS_B,
+    }
+
+    # Allow the remaining admitted workflow to finish.
+    client.release(EXECUTION_A)
+
+    # Only now may the orchestration error escape.
+    with pytest.raises(RuntimeError) as exc_info:
+        await asyncio.wait_for(
+            task,
+            timeout=1,
+        )
+
+    assert exc_info.value is failure
+
+    # C must never have been admitted at any point.
+    assert client.started_arguments == {
+        ARGUMENTS_A,
+        ARGUMENTS_B,
+    }
+
+
+@pytest.mark.asyncio
+async def test_execute_workflows_raises_exception_group_for_multiple_orchestration_errors() -> None:
+    client = FailingExecutionsClient()
+
+    task = asyncio.create_task(
+        execute_workflows(
+            client=client,  # pyright: ignore[reportArgumentType]
+            parent=PARENT,
+            execution_configs=[
+                ARGUMENTS_A,
+                ARGUMENTS_B,
+                ARGUMENTS_C,
+                ARGUMENTS_D,
+            ],
+            max_in_flight=3,
+            poll_interval_seconds=0,
+        )
+    )
+
+    await wait_until(
+        lambda: len(client.create_requests) == 3
+    )
+
+    failure_a = ValueError("A poll failed")
+    failure_b = RuntimeError("B poll failed")
+
+    client.fail(
+        EXECUTION_A,
+        error=failure_a,
+    )
+
+    client.fail(
+        EXECUTION_B,
+        error=failure_b,
+    )
+
+    await asyncio.sleep(0)
+
+    assert client.started_arguments == {
+        ARGUMENTS_A,
+        ARGUMENTS_B,
+        ARGUMENTS_C,
+    }
+
+    assert not task.done()
+
+    client.release(EXECUTION_C)
+
+    with pytest.raises(ExceptionGroup) as exc_info:
+        await asyncio.wait_for(
+            task,
+            timeout=1,
+        )
+
+    assert set(exc_info.value.exceptions) == {
+        failure_a,
+        failure_b,
     }
