@@ -126,6 +126,11 @@ async def run_backfill(
             "No unloaded objects found - exiting",
             extra={
                 "event": "schedule_backfill_completed",
+                "discovered_count": 0,
+                "started_count": 0,
+                "succeeded_count": 0,
+                "unsuccessful_count": 0,
+                "not_started_count": 0,
             },
         )
         return
@@ -138,7 +143,7 @@ async def run_backfill(
             max_in_flight=config.max_in_flight,
             poll_interval_seconds=config.poll_interval_seconds,
         )
-    except Exception as exc:
+    except Exception:
         logger.exception(
             "Orchestration error",
             extra={
@@ -185,7 +190,7 @@ async def run_backfill(
         )
 
         raise WorkflowBatchFailed(
-            discovered_count=len(workflow_configs),
+            discovered_count=discovered_count,
             started_count=started_count,
             succeeded_count=succeeded_count,
             unsuccessful_count=unsuccessful_count,
