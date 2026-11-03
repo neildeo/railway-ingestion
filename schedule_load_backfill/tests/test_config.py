@@ -211,38 +211,42 @@ def test_load_config_from_env_rejects_invalid_numeric_values(
         load_config_from_env()
 
 
+@pytest.mark.parametrize(
+    "missing_name",
+    [
+        "BQ_PROJECT",
+        "SOURCE_BUCKET",
+        "BQ_DATASET",
+        "WORKFLOW_PARENT",
+        "MAX_IN_FLIGHT",
+        "POLL_INTERVAL_SECONDS",
+        "DRY_RUN",
+    ],
+)
 def test_load_config_from_env_rejects_missing_required_value(
     monkeypatch: pytest.MonkeyPatch,
+    missing_name: str,
 ) -> None:
-    monkeypatch.setenv(
-        "SOURCE_BUCKET",
-        "bucket",
-    )
-    monkeypatch.setenv(
-        "BQ_DATASET",
-        "raw",
-    )
-    monkeypatch.setenv(
-        "WORKFLOW_PARENT",
-        "workflow-parent",
-    )
-    monkeypatch.setenv(
-        "MAX_IN_FLIGHT",
-        "10",
-    )
-    monkeypatch.setenv(
-        "POLL_INTERVAL_SECONDS",
-        "10",
-    )
-    monkeypatch.setenv(
-        "DRY_RUN",
-        "false",
-    )
+    env = {
+        "BQ_PROJECT": "railway-analytics-508615",
+        "SOURCE_BUCKET": "bucket",
+        "BQ_DATASET": "raw",
+        "WORKFLOW_PARENT": "workflow-parent",
+        "MAX_IN_FLIGHT": "10",
+        "POLL_INTERVAL_SECONDS": "10",
+        "DRY_RUN": "false",
+    }
+
+    for name, value in env.items():
+        monkeypatch.setenv(
+            name,
+            value,
+        )
 
     monkeypatch.delenv(
-        "BQ_PROJECT",
+        missing_name,
         raising=False,
     )
 
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError):
         load_config_from_env()
