@@ -101,5 +101,5 @@ where
         )
         for (object_name, generation), families
         in families_by_object.items()
-        if families == EXPECTED_RECORD_FAMILIES
+        if families >= EXPECTED_RECORD_FAMILIES
     }
