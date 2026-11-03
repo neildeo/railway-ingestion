@@ -25,6 +25,14 @@ def load_config_from_env() -> BackfillConfig:
     poll_interval_seconds = _parse_env_variable("POLL_INTERVAL_SECONDS", float)
     dry_run = _parse_env_variable("DRY_RUN", _parse_bool_string)
 
+    if max_in_flight < 1:
+        raise ValueError(
+            f"max_in_flight must be a positive integer, but value {max_in_flight} was supplied")
+
+    if poll_interval_seconds <= 0:
+        raise ValueError(
+            f"poll_interval_seconds must be a positive float, but value {poll_interval_seconds} was supplied")
+
     return BackfillConfig(
         project=project,
         source_bucket=source_bucket,

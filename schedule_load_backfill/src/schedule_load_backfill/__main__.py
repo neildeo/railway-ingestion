@@ -75,7 +75,12 @@ async def run_backfill(
     logger.info(
         "Starting SCHEDULE data load backfill...",
         extra={
-            "event": "schedule_backfill_started"
+            "event": "schedule_backfill_started",
+            "dry_run": config.dry_run,
+            "source_bucket": config.source_bucket,
+            "audit_dataset": config.audit_dataset,
+            "max_in_flight": config.max_in_flight,
+            "poll_interval_seconds": config.poll_interval_seconds,
         }
     )
 
@@ -87,27 +92,36 @@ async def run_backfill(
         audit_dataset=config.audit_dataset,
     )
 
-    for cfg in workflow_configs:
-        logger.info(
-            f"Unloaded schedule object found",
-            extra={
-                "event": "schedule_backfill_candidate",
-                "source_object": cfg.object,
-                "source_generation": cfg.generation,
-                "dataset": cfg.dataset,
-            },
-        )
+    logger.info(
+        "SCHEDULE backfill discovery completed",
+        extra={
+            "event": "schedule_backfill_discovery_completed",
+            "discovered_count": len(workflow_configs),
+        },
+    )
 
     if config.dry_run:
+        for cfg in workflow_configs:
+            logger.info(
+                f"Unloaded schedule object found",
+                extra={
+                    "event": "schedule_backfill_candidate",
+                    "source_object": cfg.object,
+                    "source_generation": cfg.generation,
+                },
+            )
+
         logger.info(
             "DRY RUN - aborting after discovery phase",
             extra={
                 "event": "schedule_backfill_dry_run_completed",
+                "discovered_count": len(workflow_configs)
             },
         )
         return
 
-    if len(workflow_configs) == 0:
+    discovered_count = len(workflow_configs)
+    if discovered_count == 0:
         logger.info(
             "No unloaded objects found - exiting",
             extra={
@@ -125,22 +139,30 @@ async def run_backfill(
             poll_interval_seconds=config.poll_interval_seconds,
         )
     except Exception as exc:
-        logger.error(
+        logger.exception(
             "Orchestration error",
             extra={
                 "event": "schedule_backfill_orchestration_failed",
             },
-            exc_info=True,
         )
-        raise exc
+        raise
 
-    unsuccessful_jobs = [r for r in results if r.state !=
-                         WorkflowTerminalState.SUCCEEDED]
+    unsuccessful_results = [
+        r for r in results
+        if r.state != WorkflowTerminalState.SUCCEEDED]
 
-    if unsuccessful_jobs:
-        for job in unsuccessful_jobs:
+    succeeded_count = sum(
+        result.state is WorkflowTerminalState.SUCCEEDED
+        for result in results
+    )
+    unsuccessful_count = len(unsuccessful_results)
+    started_count = len(results)
+    not_started_count = len(workflow_configs) - started_count
+
+    if unsuccessful_results:
+        for job in unsuccessful_results:
             logger.error(
-                "Schedule backfill failed",
+                "SCHEDULE workflow execution completed unsuccessfully",
                 extra={
                     "event": "schedule_backfill_workflow_failed",
                     "execution_name": job.execution_name,
@@ -149,24 +171,36 @@ async def run_backfill(
                     "workflow_state": job.state.value,
                 },
             )
+
+        logger.error(
+            "SCHEDULE backfill completed with unsuccessful workflow executions",
+            extra={
+                "event": "schedule_backfill_failed",
+                "discovered_count": discovered_count,
+                "started_count": started_count,
+                "succeeded_count": succeeded_count,
+                "unsuccessful_count": unsuccessful_count,
+                "not_started_count": not_started_count,
+            },
+        )
+
         raise WorkflowBatchFailed(
             discovered_count=len(workflow_configs),
-            started_count=len(results),
-            succeeded_count=len(
-                [r for r in results if r.state == WorkflowTerminalState.SUCCEEDED]),
-            unsuccessful_count=len(unsuccessful_jobs),
-            not_started_count=len(workflow_configs) - len(results),
+            started_count=started_count,
+            succeeded_count=succeeded_count,
+            unsuccessful_count=unsuccessful_count,
+            not_started_count=not_started_count,
         )
 
     logger.info(
         "Schedule backfill completed successfully",
         extra={
             "event": "schedule_backfill_completed",
-            "discovered_count": len(workflow_configs),
-            "started_count": len(results),
-            "succeeded_count": len([r for r in results if r.state == WorkflowTerminalState.SUCCEEDED]),
-            "unsuccessful_count": 0,
-            "not_started_count": len(workflow_configs) - len(results),
+            "discovered_count": discovered_count,
+            "started_count": started_count,
+            "succeeded_count": succeeded_count,
+            "unsuccessful_count": unsuccessful_count,
+            "not_started_count": not_started_count,
         },
     )
 
