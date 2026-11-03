@@ -33,11 +33,13 @@ def discover_workflow_executions(
         audit_dataset=audit_dataset,
     )
 
-    workflow_ex_args = [
-        _workflow_execution_args_from_blob(blob)
-        for blob in blobs
-        if _workflow_execution_args_from_blob(blob) not in completed
-    ]
+    workflow_ex_args = []
+
+    for blob in blobs:
+        args = _workflow_execution_args_from_blob(blob)
+
+        if args not in completed:
+            workflow_ex_args.append(args)
 
     workflow_ex_args.sort(key=lambda args: args.object)
 
@@ -45,9 +47,14 @@ def discover_workflow_executions(
 
 
 def _workflow_execution_args_from_blob(blob: storage.Blob) -> WorkflowExecutionArgs:
+    if blob.generation is None:
+        raise ValueError(
+            f"Blob {blob.name!r} has no generation"
+        )
+
     return WorkflowExecutionArgs(
         object=blob.name,  # type: ignore
-        generation=blob.generation,  # type: ignore
+        generation=blob.generation,
     )
 
 
@@ -63,7 +70,7 @@ select
     source_generation,
     record_family,
     status,
-from {project}.{audit_dataset}.load_audit
+from `{project}.{audit_dataset}.load_audit`
 where
     source_feed = 'schedule'
 """
@@ -74,23 +81,25 @@ where
     families_by_object: dict[tuple[str, int], set[str]] = {}
 
     for row in rows:
-        object = row.source_object
-        gen = int(row.source_generation)
-        if (object, gen) not in families_by_object.keys():
-            families_by_object[(object, gen)] = set()
-        if row.status == "SUCCEEDED":
-            families_by_object[(object, gen)].add(row.record_family)
+        if row.status != "SUCCEEDED":
+            continue
 
-    completed = set(
-        k
-        for k, v in families_by_object.items()
-        if v == EXPECTED_RECORD_FAMILIES
-    )
-
-    return set(
-        WorkflowExecutionArgs(
-            object=object,
-            generation=gen,
+        key = (
+            row.source_object,
+            int(row.source_generation),
         )
-        for (object, gen) in completed
-    )
+
+        families_by_object.setdefault(
+            key,
+            set(),
+        ).add(row.record_family)
+
+    return {
+        WorkflowExecutionArgs(
+            object=object_name,
+            generation=generation,
+        )
+        for (object_name, generation), families
+        in families_by_object.items()
+        if families == EXPECTED_RECORD_FAMILIES
+    }
