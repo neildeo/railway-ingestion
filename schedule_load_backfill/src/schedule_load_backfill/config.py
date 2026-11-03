@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Type
+from typing import Callable, TypeVar
 import os
 
 
@@ -23,7 +23,7 @@ def load_config_from_env() -> BackfillConfig:
     workflow_parent = _parse_env_variable("WORKFLOW_PARENT", str)
     max_in_flight = _parse_env_variable("MAX_IN_FLIGHT", int)
     poll_interval_seconds = _parse_env_variable("POLL_INTERVAL_SECONDS", float)
-    dry_run = _parse_env_variable("DRY_RUN", bool)
+    dry_run = _parse_env_variable("DRY_RUN", _parse_bool_string)
 
     return BackfillConfig(
         project=project,
@@ -36,10 +36,23 @@ def load_config_from_env() -> BackfillConfig:
     )
 
 
-def _parse_env_variable(env_var_name: str, type: Type):
+T = TypeVar("T")
+
+
+def _parse_env_variable(env_var_name: str, parser: Callable[[str], T]) -> T:
     var_str = os.getenv(env_var_name)
 
     if var_str is None:
         raise ValueError(f"Missing env variable: {env_var_name}")
 
-    return var_str
+    return parser(var_str)
+
+
+def _parse_bool_string(bool_str: str) -> bool:
+    match bool_str.lower():
+        case "true":
+            return True
+        case "false":
+            return False
+        case _:
+            raise ValueError(f"Invalid boolean string: {bool_str}")
