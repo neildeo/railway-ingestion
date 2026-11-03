@@ -1,0 +1,8 @@
+{
+  "image_name": "railway-ingest-schedule-load-backfill",
+  "cloud_run_jobs": [
+    "railway-ingest-schedule-load-backfill"
+  ],
+  "region": "europe-west1",
+  "depends_on": []
+}
