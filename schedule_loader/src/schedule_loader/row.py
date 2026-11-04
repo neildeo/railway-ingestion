@@ -293,9 +293,9 @@ def tiploc_row(
     return {
         "transaction_type": record["transaction_type"],
         "tiploc_code": record["tiploc_code"],
-        "tps_description": record["tps_description"],
+        "tps_description": record.get("tps_description"),
         "description": record.get("description"),
         "crs_code": record.get("crs_code"),
         "stanox": record.get("stanox"),
-        "nalco": record["nalco"],
+        "nalco": record.get("nalco"),
     }
