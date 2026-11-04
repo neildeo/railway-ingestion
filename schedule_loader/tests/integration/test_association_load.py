@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import os
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from dotenv import load_dotenv
 import pytest
+from tests.integration.support import IntegrationSource
 from google.cloud import (
     bigquery,
     bigquery_storage_v1,
@@ -17,24 +16,17 @@ from schedule_loader.config import LoadConfig
 from schedule_loader.source import RecordType
 
 
-load_dotenv()
-
-
 EXPECTED_ASSOCIATION_COUNT = 83299
 
 
 @pytest.mark.integration
-def test_load_associations_end_to_end() -> None:
-    project = os.environ["INTEGRATION_GCP_PROJECT"]
-    source_bucket = os.environ[
-        "INTEGRATION_SOURCE_BUCKET"
-    ]
-    source_object = os.environ[
-        "INTEGRATION_SOURCE_OBJECT"
-    ]
-    source_generation = int(
-        os.environ["INTEGRATION_SOURCE_GENERATION"]
-    )
+def test_load_associations_end_to_end(
+    integration_source: IntegrationSource
+) -> None:
+    project = integration_source.project
+    source_bucket = integration_source.source_bucket
+    source_object = integration_source.source_object
+    source_generation = integration_source.source_generation
 
     repo_root = Path(__file__).resolve().parents[3]
 

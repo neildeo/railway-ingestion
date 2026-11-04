@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import os
 from datetime import date, datetime, UTC
 from pathlib import Path
 
-from dotenv import load_dotenv
 import pytest
+from tests.integration.support import IntegrationSource
 from google.cloud import (
     bigquery,
     bigquery_storage_v1,
@@ -15,9 +14,6 @@ from google.cloud import (
 from schedule_loader.__main__ import generate_load_id, load_schedule
 from schedule_loader.config import LoadConfig
 from schedule_loader.source import RecordType
-
-
-load_dotenv()
 
 
 EXPECTED_SCHEDULE_COUNT = 728364
@@ -30,17 +26,13 @@ UPDATE_SOURCE_GENERATION = 1791271962017410
 
 
 @pytest.mark.integration
-def test_load_schedules_end_to_end() -> None:
-    project = os.environ["INTEGRATION_GCP_PROJECT"]
-    source_bucket = os.environ[
-        "INTEGRATION_SOURCE_BUCKET"
-    ]
-    source_object = os.environ[
-        "INTEGRATION_SOURCE_OBJECT"
-    ]
-    source_generation = int(
-        os.environ["INTEGRATION_SOURCE_GENERATION"]
-    )
+def test_load_schedules_end_to_end(
+    integration_source: IntegrationSource
+) -> None:
+    project = integration_source.project
+    source_bucket = integration_source.source_bucket
+    source_object = integration_source.source_object
+    source_generation = integration_source.source_generation
 
     repo_root = Path(__file__).resolve().parents[3]
 
@@ -288,11 +280,11 @@ def test_load_schedules_end_to_end() -> None:
 
 
 @pytest.mark.integration
-def test_load_schedule_update_end_to_end() -> None:
-    project = os.environ["INTEGRATION_GCP_PROJECT"]
-    source_bucket = os.environ[
-        "INTEGRATION_SOURCE_BUCKET"
-    ]
+def test_load_schedule_update_end_to_end(
+    integration_source: IntegrationSource
+) -> None:
+    project = integration_source.project
+    source_bucket = integration_source.source_bucket
 
     repo_root = Path(__file__).resolve().parents[3]
 

@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, UTC
-import os
 from pathlib import Path
 
-from dotenv import load_dotenv
 import pytest
+from tests.integration.support import IntegrationSource
 from google.cloud import (
     bigquery,
     bigquery_storage_v1,
@@ -18,13 +17,10 @@ from schedule_loader.config import LoadConfig
 from schedule_loader.source import RecordType
 
 
-load_dotenv()
-
-
 @dataclass(frozen=True)
 class TiplocLoadCase:
-    source_object: str
-    source_generation: int
+    source_object: str | None
+    source_generation: int | None
     publication_sequence: int
     extract_type: str
     expected_row_count: int | None = None
@@ -37,14 +33,8 @@ class TiplocLoadCase:
     [
         pytest.param(
             TiplocLoadCase(
-                source_object=os.environ[
-                    "INTEGRATION_SOURCE_OBJECT"
-                ],
-                source_generation=int(
-                    os.environ[
-                        "INTEGRATION_SOURCE_GENERATION"
-                    ]
-                ),
+                source_object=None,
+                source_generation=None,
                 publication_sequence=5251,
                 extract_type="full",
                 expected_row_count=12096,
@@ -69,18 +59,29 @@ class TiplocLoadCase:
 )
 def test_load_tiplocs_end_to_end(
     case: TiplocLoadCase,
+    integration_source: IntegrationSource,
 ) -> None:
-    project = os.environ["INTEGRATION_GCP_PROJECT"]
-    source_bucket = os.environ[
-        "INTEGRATION_SOURCE_BUCKET"
-    ]
+    project = integration_source.project
+    source_bucket = integration_source.source_bucket
+
+    source_object = (
+        case.source_object
+        if case.source_object is not None
+        else integration_source.source_object
+    )
+
+    source_generation = (
+        case.source_generation
+        if case.source_generation is not None
+        else integration_source.source_generation
+    )
 
     repo_root = Path(__file__).resolve().parents[3]
 
     config = LoadConfig(
         source_bucket=source_bucket,
-        source_object=case.source_object,
-        source_generation=case.source_generation,
+        source_object=source_object,
+        source_generation=source_generation,
         project=project,
         dataset="integration_test",
         record_type=RecordType.TIPLOC,
@@ -122,10 +123,10 @@ def test_load_tiplocs_end_to_end(
         count_rows = list(
             bigquery_client.query(
                 f"""
-                SELECT COUNT(*) AS row_count
-                FROM `{table_id}`
-                WHERE load_id = @load_id
-                """,
+                    SELECT COUNT(*) AS row_count
+                    FROM `{table_id}`
+                    WHERE load_id = @load_id
+                    """,
                 job_config=bigquery.QueryJobConfig(
                     query_parameters=[
                         bigquery.ScalarQueryParameter(
@@ -150,15 +151,15 @@ def test_load_tiplocs_end_to_end(
         provenance_rows = list(
             bigquery_client.query(
                 f"""
-                SELECT
-                    source_object,
-                    source_generation,
-                    publication_sequence,
-                    extract_type
-                FROM `{table_id}`
-                WHERE load_id = @load_id
-                LIMIT 1
-                """,
+                    SELECT
+                        source_object,
+                        source_generation,
+                        publication_sequence,
+                        extract_type
+                    FROM `{table_id}`
+                    WHERE load_id = @load_id
+                    LIMIT 1
+                    """,
                 job_config=bigquery.QueryJobConfig(
                     query_parameters=[
                         bigquery.ScalarQueryParameter(
@@ -175,10 +176,10 @@ def test_load_tiplocs_end_to_end(
 
         provenance = provenance_rows[0]
 
-        assert provenance.source_object == case.source_object
+        assert provenance.source_object == source_object
         assert (
             provenance.source_generation
-            == case.source_generation
+            == source_generation
         )
         assert (
             provenance.publication_sequence
@@ -190,16 +191,16 @@ def test_load_tiplocs_end_to_end(
             rows = list(
                 bigquery_client.query(
                     f"""
-                    SELECT *
-                    FROM `{table_id}`
-                    WHERE load_id = @load_id
-                      AND tiploc_code IN (
-                        'AACHEN',
-                        'ABARASQ',
-                        'ABCWM'
-                      )
-                    ORDER BY tiploc_code
-                    """,
+                        SELECT *
+                        FROM `{table_id}`
+                        WHERE load_id = @load_id
+                        AND tiploc_code IN (
+                            'AACHEN',
+                            'ABARASQ',
+                            'ABCWM'
+                        )
+                        ORDER BY tiploc_code
+                        """,
                     job_config=bigquery.QueryJobConfig(
                         query_parameters=[
                             bigquery.ScalarQueryParameter(
@@ -221,11 +222,11 @@ def test_load_tiplocs_end_to_end(
             assert aachen.load_id == load_id
             assert (
                 aachen.source_object
-                == case.source_object
+                == source_object
             )
             assert (
                 aachen.source_generation
-                == case.source_generation
+                == source_generation
             )
             assert aachen.publication_sequence == 5251
             assert aachen.extract_type == "full"
@@ -267,14 +268,14 @@ def test_load_tiplocs_end_to_end(
             null_rows = list(
                 bigquery_client.query(
                     f"""
-                    SELECT
-                        COUNTIF(tps_description IS NULL)
-                            AS missing_tps_description,
-                        COUNTIF(nalco IS NULL)
-                            AS missing_nalco
-                    FROM `{table_id}`
-                    WHERE load_id = @load_id
-                    """,
+                        SELECT
+                            COUNTIF(tps_description IS NULL)
+                                AS missing_tps_description,
+                            COUNTIF(nalco IS NULL)
+                                AS missing_nalco
+                        FROM `{table_id}`
+                        WHERE load_id = @load_id
+                        """,
                     job_config=bigquery.QueryJobConfig(
                         query_parameters=[
                             bigquery.ScalarQueryParameter(
