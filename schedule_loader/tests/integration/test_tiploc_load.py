@@ -28,7 +28,7 @@ class TiplocLoadCase:
     publication_sequence: int
     extract_type: str
     expected_row_count: int | None = None
-    expect_missing_tps_description: bool = False
+    expect_missing_optional_fields: bool = False
 
 
 @pytest.mark.integration
@@ -61,9 +61,9 @@ class TiplocLoadCase:
                 source_generation=1793775708676497,
                 publication_sequence=5280,
                 extract_type="update",
-                expect_missing_tps_description=True,
+                expect_missing_optional_fields=True,
             ),
-            id="regression-missing-tps-description-5280",
+            id="regression-missing-tiploc-fields-5280",
         ),
     ],
 )
@@ -263,14 +263,17 @@ def test_load_tiplocs_end_to_end(
                 == "ABERCWMBOI"
             )
 
-        if case.expect_missing_tps_description:
+        if case.expect_missing_optional_fields:
             null_rows = list(
                 bigquery_client.query(
                     f"""
-                    SELECT COUNT(*) AS row_count
+                    SELECT
+                        COUNTIF(tps_description IS NULL)
+                            AS missing_tps_description,
+                        COUNTIF(nalco IS NULL)
+                            AS missing_nalco
                     FROM `{table_id}`
                     WHERE load_id = @load_id
-                      AND tps_description IS NULL
                     """,
                     job_config=bigquery.QueryJobConfig(
                         query_parameters=[
@@ -285,7 +288,8 @@ def test_load_tiplocs_end_to_end(
             )
 
             assert len(null_rows) == 1
-            assert null_rows[0].row_count > 0
+            assert null_rows[0].missing_tps_description > 0
+            assert null_rows[0].missing_nalco > 0
 
     finally:
         bigquery_client.query(
