@@ -6,6 +6,7 @@ import pytest
 
 from schedule_load_backfill.__main__ import (
     WorkflowBatchFailed,
+    main,
     run_backfill,
 )
 from schedule_load_backfill.config import BackfillConfig
@@ -449,3 +450,46 @@ async def test_run_backfill_logs_and_propagates_orchestration_exception(
         ) == "schedule_backfill_orchestration_failed"
         for record in caplog.records
     )
+
+
+# Regression test: Google Async Clients run in an event loop at the scope in
+# which they are created. This tests that those clients run in the same loop
+# as our main coroutine.
+def test_main_creates_async_workflows_client_inside_running_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeExecutionsAsyncClient:
+        def __init__(self) -> None:
+            import asyncio
+
+            asyncio.get_running_loop()
+
+    async def fake_run_backfill(**kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "schedule_load_backfill.__main__.load_config_from_env",
+        lambda: config(),
+    )
+
+    monkeypatch.setattr(
+        "schedule_load_backfill.__main__.storage.Client",
+        lambda **kwargs: object(),
+    )
+
+    monkeypatch.setattr(
+        "schedule_load_backfill.__main__.bigquery.Client",
+        lambda **kwargs: object(),
+    )
+
+    monkeypatch.setattr(
+        "schedule_load_backfill.__main__.ExecutionsAsyncClient",
+        FakeExecutionsAsyncClient,
+    )
+
+    monkeypatch.setattr(
+        "schedule_load_backfill.__main__.run_backfill",
+        fake_run_backfill,
+    )
+
+    main()
