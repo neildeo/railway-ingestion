@@ -452,9 +452,9 @@ async def test_run_backfill_logs_and_propagates_orchestration_exception(
     )
 
 
-# Regression test: Google Async Clients run in an event loop at the scope in
-# which they are created. This tests that those clients run in the same loop
-# as our main coroutine.
+# Regression test: ExecutionsAsyncClient binds async machinery to the event
+# loop active when it is created. Ensure it is constructed inside the same
+# running loop used by the backfill coroutine.
 def test_main_creates_async_workflows_client_inside_running_loop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
