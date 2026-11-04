@@ -210,11 +210,7 @@ async def run_backfill(
     )
 
 
-def main() -> None:
-    configure_logging()
-
-    config = load_config_from_env()
-
+async def async_main(config: BackfillConfig) -> None:
     storage_client = storage.Client(
         project=config.project,
     )
@@ -223,14 +219,20 @@ def main() -> None:
     )
     executions_client = ExecutionsAsyncClient()
 
-    asyncio.run(
-        run_backfill(
-            config=config,
-            storage_client=storage_client,
-            bigquery_client=bigquery_client,
-            executions_client=executions_client,
-        )
+    await run_backfill(
+        config=config,
+        storage_client=storage_client,
+        bigquery_client=bigquery_client,
+        executions_client=executions_client,
     )
+
+
+def main() -> None:
+    configure_logging()
+
+    config = load_config_from_env()
+
+    asyncio.run(async_main(config))
 
 
 if __name__ == "__main__":
