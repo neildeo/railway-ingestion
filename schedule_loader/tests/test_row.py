@@ -88,11 +88,10 @@ def test_tiploc_row_preserves_optional_fields() -> None:
     }
 
 
-def test_tiploc_row_maps_missing_tps_description_to_none() -> None:
+def test_tiploc_row_maps_missing_optional_source_fields_to_none() -> None:
     record = {
         "transaction_type": "Create",
         "tiploc_code": "PADTON",
-        "nalco": "308700",
     }
 
     result = tiploc_row(record)
@@ -104,7 +103,7 @@ def test_tiploc_row_maps_missing_tps_description_to_none() -> None:
         "description": None,
         "crs_code": None,
         "stanox": None,
-        "nalco": "308700",
+        "nalco": None,
     }
 
 
