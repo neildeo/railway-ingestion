@@ -88,6 +88,25 @@ def test_tiploc_row_preserves_optional_fields() -> None:
     }
 
 
+def test_tiploc_row_maps_missing_optional_source_fields_to_none() -> None:
+    record = {
+        "transaction_type": "Create",
+        "tiploc_code": "PADTON",
+    }
+
+    result = tiploc_row(record)
+
+    assert result == {
+        "transaction_type": "Create",
+        "tiploc_code": "PADTON",
+        "tps_description": None,
+        "description": None,
+        "crs_code": None,
+        "stanox": None,
+        "nalco": None,
+    }
+
+
 def test_attach_load_context_adds_common_raw_fields() -> None:
     context = LoadContext(
         load_id="20261019T084900.000000Z-a7f3c9",

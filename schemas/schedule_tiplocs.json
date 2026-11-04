@@ -44,7 +44,7 @@
   {
     "name": "tps_description",
     "type": "STRING",
-    "mode": "REQUIRED",
+    "mode": "NULLABLE",
     "description": "Timing Point System description of the location."
   },
   {
@@ -68,7 +68,7 @@
   {
     "name": "nalco",
     "type": "STRING",
-    "mode": "REQUIRED",
+    "mode": "NULLABLE",
     "description": "NLC (National Location Code) associated with the TIPLOC."
   }
 ]
