@@ -5,6 +5,7 @@ import json
 
 from google.cloud.workflows.executions_v1.types import Execution
 import pytest
+import logging
 
 from schedule_load_backfill.orchestrator import (
     execute_workflows,
@@ -244,6 +245,13 @@ async def wait_until(
     )
 
 
+def log_extra(
+    record: logging.LogRecord,
+    key: str,
+):
+    return getattr(record, key, None)
+
+
 @pytest.mark.asyncio
 async def test_execute_workflows_runs_executions_concurrently() -> None:
     client = BarrierExecutionsClient()
@@ -307,6 +315,82 @@ async def test_execute_workflows_starts_all_executions() -> None:
         ARGUMENTS_A,
         ARGUMENTS_B,
     }
+
+
+@pytest.mark.asyncio
+async def test_execute_workflows_logs_completed_execution(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    client = ControlledExecutionsClient()
+
+    with caplog.at_level(logging.INFO):
+        task = asyncio.create_task(
+            execute_workflows(
+                client=client,  # pyright: ignore[reportArgumentType]
+                parent=PARENT,
+                execution_configs=[
+                    ARGUMENTS_A,
+                ],
+                max_in_flight=1,
+                poll_interval_seconds=0,
+            )
+        )
+
+        await wait_until(
+            lambda: len(client.create_requests) == 1
+        )
+
+        client.release(EXECUTION_A)
+
+        await asyncio.wait_for(
+            task,
+            timeout=1,
+        )
+
+    completion_records = [
+        record
+        for record in caplog.records
+        if log_extra(
+            record,
+            "event",
+        ) == "schedule_backfill_workflow_completed"
+    ]
+
+    assert len(completion_records) == 1
+
+    completed = completion_records[0]
+
+    assert (
+        log_extra(
+            completed,
+            "execution_name",
+        )
+        == EXECUTION_A
+    )
+
+    assert (
+        log_extra(
+            completed,
+            "source_object",
+        )
+        == ARGUMENTS_A.object
+    )
+
+    assert (
+        log_extra(
+            completed,
+            "source_generation",
+        )
+        == ARGUMENTS_A.generation
+    )
+
+    assert (
+        log_extra(
+            completed,
+            "workflow_state",
+        )
+        == WorkflowTerminalState.SUCCEEDED.value
+    )
 
 
 @pytest.mark.asyncio
