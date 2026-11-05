@@ -3,6 +3,7 @@ from __future__ import annotations
 from google.cloud.workflows.executions_v1 import ExecutionsAsyncClient
 import asyncio
 from collections import deque
+import logging
 
 from schedule_load_backfill.workflow import (
     WorkflowExecutionArgs,
@@ -10,6 +11,9 @@ from schedule_load_backfill.workflow import (
     WorkflowTerminalState,
     run_workflow_to_completion,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 async def execute_workflows(
@@ -54,6 +58,17 @@ async def execute_workflows(
                 exceptions.append(exc)
                 continue_admitting = False
                 continue
+
+            logger.info(
+                "SCHEDULE workflow execution completed",
+                extra={
+                    "event": "schedule_backfill_workflow_completed",
+                    "execution_name": result.execution_name,
+                    "source_object": result.arguments.object,
+                    "source_generation": result.arguments.generation,
+                    "workflow_state": result.state.value,
+                },
+            )
 
             results.append(result)
 
