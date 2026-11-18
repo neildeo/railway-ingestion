@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
+from trust_probe.analyse import analyse
 from trust_probe.capture import capture
 
 
@@ -40,6 +41,22 @@ def main() -> None:
         help="Output NDJSON file",
     )
 
+    analyse_parser = subcommands.add_parser(
+        "analyse",
+        help="Analyse a previously captured NDJSON file",
+    )
+    analyse_parser.add_argument(
+        "input",
+        type=Path,
+        help="Capture file to analyse",
+    )
+    analyse_parser.add_argument(
+        "--examples-output",
+        type=Path,
+        default=None,
+        help="Optional JSON file for example events by type",
+    )
+
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -50,6 +67,9 @@ def main() -> None:
     if args.command == "capture":
         output = args.output or default_output_path()
         capture(args.minutes, output)
+
+    elif args.command == "analyse":
+        analyse(args.input, args.examples_output)
 
 
 if __name__ == "__main__":
