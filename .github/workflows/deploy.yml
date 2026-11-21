@@ -63,7 +63,7 @@ jobs:
 
           # Changes to deployment workflow semantics should redeploy all roots.
           for file in "${changed_files[@]}"; do
-            if [[ "$file" == .github/workflows/* ]]; then
+            if [[ "$file" == ".github/workflows/deploy.yml" ]]; then
               all_roots=true
               break
             fi
