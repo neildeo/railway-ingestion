@@ -1,0 +1,90 @@
+
+name: Validate deployment manifests
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate manifests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate deploy.json files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t manifests < <(
+            find . \
+              -mindepth 2 \
+              -maxdepth 2 \
+              -type f \
+              -name deploy.json \
+              -print \
+              | sort
+          )
+
+          if (( ${#manifests[@]} == 0 )); then
+            echo "::error::No deployment manifests found."
+            exit 1
+          fi
+
+          for manifest in "${manifests[@]}"; do
+            echo "Validating $manifest"
+
+            if ! jq -e '
+              def nonempty_string:
+                type == "string" and length > 0;
+
+              def string_array:
+                type == "array"
+                and all(.[]; nonempty_string);
+
+              type == "object"
+
+              # Require precisely the defined schema.
+              and (
+                (keys | sort) ==
+                ([
+                  "language",
+                  "image_name",
+                  "cloud_run_jobs",
+                  "cloud_run_instances",
+                  "region",
+                  "depends_on"
+                ] | sort)
+              )
+
+              # Supported application languages.
+              and (.language == "python" or .language == "rust")
+
+              # Required scalar fields.
+              and (.image_name | nonempty_string)
+              and (.region | nonempty_string)
+
+              # Required array fields.
+              and (.cloud_run_jobs | string_array)
+              and (.cloud_run_instances | string_array)
+              and (.depends_on | string_array)
+
+              # At least one deployment target, of either type.
+              and (
+                (
+                  (.cloud_run_jobs | length) +
+                  (.cloud_run_instances | length)
+                ) > 0
+              )
+            ' "$manifest" > /dev/null; then
+              echo "::error file=${manifest#./}::Invalid deployment manifest."
+              exit 1
+            fi
+          done
+
+          echo "Validated ${#manifests[@]} deployment manifests."
