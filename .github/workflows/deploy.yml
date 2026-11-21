@@ -75,6 +75,7 @@ jobs:
 
             image_name="$(jq -r '.image_name' "$manifest")"
             cloud_run_jobs="$(jq -c '.cloud_run_jobs' "$manifest")"
+            cloud_run_instances="$(jq -c '.cloud_run_instances' "$manifest")"
             region="$(jq -r '.region' "$manifest")"
 
             affected="$all_roots"
@@ -107,17 +108,20 @@ jobs:
               done
             fi
 
+            
             if [[ "$affected" == true ]]; then
               matrix="$(
                 jq -c \
                   --arg root "$root" \
                   --arg image_name "$image_name" \
                   --argjson cloud_run_jobs "$cloud_run_jobs" \
+                  --argjson cloud_run_instances "$cloud_run_instances" \
                   --arg region "$region" \
                   '. + [{
                     root: $root,
                     image_name: $image_name,
                     cloud_run_jobs: $cloud_run_jobs,
+                    cloud_run_instances: $cloud_run_instances,
                     region: $region
                   }]' \
                   <<< "$matrix"
@@ -167,6 +171,7 @@ jobs:
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
         with:
           project_id: ${{ env.PROJECT_ID }}
+          install_components: beta
 
       - name: Configure Docker authentication
         run: |
@@ -230,6 +235,31 @@ jobs:
               --image="${IMAGE_URI}@${DIGEST}" \
               --quiet
           done
+      
+      - name: Deploy image to Cloud Run Instances
+        env:
+          IMAGE_URI: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ matrix.image_name }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+          CLOUD_RUN_INSTANCES: ${{ toJSON(matrix.cloud_run_instances) }}
+          REGION: ${{ matrix.region }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t instances < <(
+            jq -r '.[]' <<< "$CLOUD_RUN_INSTANCES"
+          )
+
+          for instance in "${instances[@]}"; do
+            echo "Deploying ${IMAGE_URI}@${DIGEST} to Cloud Run Instance: ${instance}"
+
+            gcloud beta run instances update "$instance" \
+              --project="$PROJECT_ID" \
+              --region="$REGION" \
+              --image="${IMAGE_URI}@${DIGEST}" \
+              --quiet
+          done
+
 
   cd:
     name: CD
