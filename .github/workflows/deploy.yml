@@ -17,8 +17,13 @@ env:
   DEPLOY_SERVICE_ACCOUNT: railway-ingestion-ci@railway-analytics-508615.iam.gserviceaccount.com
 
 jobs:
+  validate:
+    name: Validate deployment manifests
+    uses: ./.github/workflows/validate-manifests.yml
+
   detect:
     name: Detect changed roots
+    needs: validate
     runs-on: ubuntu-latest
 
     outputs:
@@ -67,22 +72,6 @@ jobs:
           for manifest in "${manifests[@]}"; do
             root="${manifest#./}"
             root="${root%/deploy.json}"
-
-            jq -e '
-              (.image_name | type == "string" and length > 0) and
-              (
-                .cloud_run_jobs
-                | type == "array"
-                and length > 0
-                and all(.[]; type == "string" and length > 0)
-              ) and
-              (.region | type == "string" and length > 0) and
-              (
-                .depends_on
-                | type == "array"
-                and all(.[]; type == "string" and length > 0)
-              )
-            ' "$manifest" > /dev/null
 
             image_name="$(jq -r '.image_name' "$manifest")"
             cloud_run_jobs="$(jq -c '.cloud_run_jobs' "$manifest")"
@@ -245,6 +234,7 @@ jobs:
   cd:
     name: CD
     needs:
+      - validate
       - detect
       - deploy
 
@@ -254,11 +244,17 @@ jobs:
     steps:
       - name: Check results
         env:
+          VALIDATE_RESULT: ${{ needs.validate.result }}
           DETECT_RESULT: ${{ needs.detect.result }}
           DEPLOY_RESULT: ${{ needs.deploy.result }}
         shell: bash
         run: |
           set -euo pipefail
+
+          if [[ "$VALIDATE_RESULT" != "success" ]]; then
+            echo "Manifest validation failed: $VALIDATE_RESULT"
+            exit 1
+          fi
 
           if [[ "$DETECT_RESULT" != "success" ]]; then
             echo "Root detection failed."

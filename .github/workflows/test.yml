@@ -9,8 +9,13 @@ permissions:
   contents: read
 
 jobs:
+  validate:
+    name: Validate deployment manifests
+    uses: ./.github/workflows/validate-manifests.yml
+
   detect:
     name: Detect changed roots
+    needs: validate
     runs-on: ubuntu-latest
 
     outputs:
@@ -59,23 +64,6 @@ jobs:
           for manifest in "${manifests[@]}"; do
             root="${manifest#./}"
             root="${root%/deploy.json}"
-
-            # Fail early if a deployment manifest is malformed.
-            jq -e '
-              (.image_name | type == "string" and length > 0) and
-              (       
-                .cloud_run_jobs
-                | type == "array"
-                and length > 0
-                and all(.[]; type == "string" and length > 0)
-              ) and
-              (.region | type == "string" and length > 0) and
-              (
-                .depends_on
-                | type == "array"
-                and all(.[]; type == "string" and length > 0)
-              )
-            ' "$manifest" > /dev/null
 
             image_name="$(jq -r '.image_name' "$manifest")"
 
@@ -182,6 +170,7 @@ jobs:
   ci:
     name: CI
     needs:
+      - validate
       - detect
       - test-build
 
@@ -191,11 +180,17 @@ jobs:
     steps:
       - name: Check results
         env:
+          VALIDATE_RESULT: ${{ needs.validate.result }}
           DETECT_RESULT: ${{ needs.detect.result }}
           TEST_BUILD_RESULT: ${{ needs.test-build.result }}
         shell: bash
         run: |
           set -euo pipefail
+
+          if [[ "$VALIDATE_RESULT" != "success" ]]; then
+            echo "Manifest validation failed: $VALIDATE_RESULT"
+            exit 1
+          fi
 
           if [[ "$DETECT_RESULT" != "success" ]]; then
             echo "Root detection failed."
