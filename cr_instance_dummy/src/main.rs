@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 fn heartbeat_message() -> &'static str {
-    "Cloud Run Instance dummy: alive"
+    "Cloud Run Instance dummy: deployed via CI/CD"
 }
 
 #[tokio::main]
@@ -18,6 +18,9 @@ mod tests {
 
     #[test]
     fn heartbeat_message_is_correct() {
-        assert_eq!(heartbeat_message(), "Cloud Run Instance dummy: alive");
+        assert_eq!(
+            heartbeat_message(),
+            "Cloud Run Instance dummy: deployed via CI/CD"
+        );
     }
 }
