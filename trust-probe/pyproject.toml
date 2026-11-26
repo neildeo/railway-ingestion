@@ -1,0 +1,20 @@
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trust-probe"
+version = "0.1.0"
+description = "Diagnostic probe for Network Rail TRUST STOMP messages"
+requires-python = ">=3.11"
+dependencies = [
+    "stomp.py>=8,<9",
+    "google-cloud-secret-manager>=2,<3",
+]
+
+[project.scripts]
+trust-probe = "trust_probe.cli:main"
+
+[tool.setuptools]
+packages = ["trust_probe"]
