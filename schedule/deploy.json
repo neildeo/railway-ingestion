@@ -1,10 +1,12 @@
 {
+  "language": "python",
   "image_name": "railway-ingest-schedule",
   "cloud_run_jobs": [
     "railway-ingest-schedule-update-early",
     "railway-ingest-schedule-update-deadline",
     "railway-ingest-schedule-full"
   ],
+  "cloud_run_instances": [],
   "region": "europe-west1",
   "depends_on": []
 }

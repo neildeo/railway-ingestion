@@ -1,0 +1,8 @@
+{
+  "language": "rust",
+  "image_name": "railway-instance-dummy",
+  "cloud_run_jobs": [],
+  "cloud_run_instances": ["railway-instance-test"],
+  "region": "europe-west2",
+  "depends_on": []
+}

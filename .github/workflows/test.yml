@@ -9,8 +9,13 @@ permissions:
   contents: read
 
 jobs:
+  validate:
+    name: Validate deployment manifests
+    uses: ./.github/workflows/validate-manifests.yml
+
   detect:
     name: Detect changed roots
+    needs: validate
     runs-on: ubuntu-latest
 
     outputs:
@@ -60,24 +65,8 @@ jobs:
             root="${manifest#./}"
             root="${root%/deploy.json}"
 
-            # Fail early if a deployment manifest is malformed.
-            jq -e '
-              (.image_name | type == "string" and length > 0) and
-              (       
-                .cloud_run_jobs
-                | type == "array"
-                and length > 0
-                and all(.[]; type == "string" and length > 0)
-              ) and
-              (.region | type == "string" and length > 0) and
-              (
-                .depends_on
-                | type == "array"
-                and all(.[]; type == "string" and length > 0)
-              )
-            ' "$manifest" > /dev/null
-
             image_name="$(jq -r '.image_name' "$manifest")"
+            language="$(jq -r '.language' "$manifest")"
 
             affected="$all_roots"
 
@@ -111,14 +100,17 @@ jobs:
               done
             fi
 
+            
             if [[ "$affected" == true ]]; then
               matrix="$(
                 jq -c \
                   --arg root "$root" \
                   --arg image_name "$image_name" \
+                  --arg language "$language" \
                   '. + [{
                     root: $root,
-                    image_name: $image_name
+                    image_name: $image_name,
+                    language: $language
                   }]' \
                   <<< "$matrix"
               )"
@@ -157,17 +149,36 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
+        if: matrix.language == 'python'
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
 
-      - name: Install
+      - name: Install Python dependencies
+        if: matrix.language == 'python'
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e . --group dev
 
-      - name: Test
+      - name: Test Python
+        if: matrix.language == 'python'
         run: pytest -m "not integration"
+
+      - name: Set up Rust
+        if: matrix.language == 'rust'
+        run: rustup show active-toolchain
+
+      - name: Check Rust formatting
+        if: matrix.language == 'rust'
+        run: cargo fmt --all -- --check
+
+      - name: Lint Rust
+        if: matrix.language == 'rust'
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Test Rust
+        if: matrix.language == 'rust'
+        run: cargo test --locked
 
       - name: Build container
         working-directory: ${{ github.workspace }}
@@ -182,6 +193,7 @@ jobs:
   ci:
     name: CI
     needs:
+      - validate
       - detect
       - test-build
 
@@ -191,11 +203,17 @@ jobs:
     steps:
       - name: Check results
         env:
+          VALIDATE_RESULT: ${{ needs.validate.result }}
           DETECT_RESULT: ${{ needs.detect.result }}
           TEST_BUILD_RESULT: ${{ needs.test-build.result }}
         shell: bash
         run: |
           set -euo pipefail
+
+          if [[ "$VALIDATE_RESULT" != "success" ]]; then
+            echo "Manifest validation failed: $VALIDATE_RESULT"
+            exit 1
+          fi
 
           if [[ "$DETECT_RESULT" != "success" ]]; then
             echo "Root detection failed."

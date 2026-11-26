@@ -1,6 +1,8 @@
 {
+  "language": "python",
   "image_name": "railway-ingest-corpus",
   "cloud_run_jobs": ["railway-ingest-corpus"],
+  "cloud_run_instances": [],
   "region": "europe-west1",
   "depends_on": []
 }
