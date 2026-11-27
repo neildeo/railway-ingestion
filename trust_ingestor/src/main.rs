@@ -1,3 +1,5 @@
+mod stomp;
+
 #[tokio::main]
 async fn main() {
     println!("TRUST ingestor: bootstrap");

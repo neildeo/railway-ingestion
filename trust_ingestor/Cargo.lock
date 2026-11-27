@@ -3,6 +3,12 @@
 version = 4
 
 [[package]]
+name = "bytes"
+version = "1.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "776dfebd015e2d8732c684a2c71003674ccb49457b539b9e82151ba38e96dd7c"
+
+[[package]]
 name = "pin-project-lite"
 version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -62,6 +68,7 @@ dependencies = [
 name = "trust_ingestor"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "tokio",
 ]
 
